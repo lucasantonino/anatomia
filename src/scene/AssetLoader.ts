@@ -48,12 +48,41 @@ function getReadableErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Converte um caminho lógico canônico de ativo (ex: `/assets/v1/manifest.json`)
+ * na URL de rede correta considerando o `BASE_URL` configurado pelo Vite
+ * (essencial para ambientes com subdiretórios como GitHub Pages).
+ */
+export function resolveNetworkAssetUrl(
+  logicalUrl: string,
+  baseUrl: string = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/',
+): string {
+  if (
+    logicalUrl.startsWith('http://') ||
+    logicalUrl.startsWith('https://') ||
+    logicalUrl.startsWith('blob:') ||
+    logicalUrl.startsWith('data:')
+  ) {
+    return logicalUrl;
+  }
+
+  // Quando baseUrl for relativo ('./' ou ''), remove a barra inicial para resolver relativo ao documento
+  if (baseUrl === './' || baseUrl === '') {
+    return logicalUrl.startsWith('/') ? logicalUrl.slice(1) : logicalUrl;
+  }
+
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const normalizedPath = logicalUrl.startsWith('/') ? logicalUrl : `/${logicalUrl}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
 async function fetchJsonSafe(url: string, signal: AbortSignal): Promise<unknown> {
   if (!isSafeAssetUrl(url)) {
     throw new Error(`URL de ativo bloqueada pela política de segurança: "${url}".`);
   }
 
-  const response = await fetch(url, {
+  const networkUrl = resolveNetworkAssetUrl(url);
+  const response = await fetch(networkUrl, {
     signal,
     headers: { Accept: 'application/json' },
   });
@@ -73,7 +102,8 @@ async function fetchBinaryWithProgress(
     throw new Error(`URL de ativo 3D bloqueada pela política de segurança: "${url}".`);
   }
 
-  const response = await fetch(url, { signal });
+  const networkUrl = resolveNetworkAssetUrl(url);
+  const response = await fetch(networkUrl, { signal });
   if (!response.ok) {
     throw new Error(`Falha HTTP ${response.status} ao carregar ativo 3D "${url}".`);
   }

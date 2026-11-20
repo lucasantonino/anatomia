@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { resolveNetworkAssetUrl } from '../../src/scene/AssetLoader';
 import {
   ANATOMY_ID_REGEX,
   AnatomyIdSchema,
@@ -628,5 +629,32 @@ describe('isPointWithinBoundingBox', () => {
     expect(isPointWithinBoundingBox([1.001, 1, 1], unitBox, 0)).toBe(false);
     expect(isPointWithinBoundingBox([1.015, 1, 1], unitBox, 0.02)).toBe(true);
     expect(isPointWithinBoundingBox([1.021, 1, 1], unitBox, 0.02)).toBe(false);
+  });
+});
+
+describe('resolveNetworkAssetUrl', () => {
+  it('preserva URLs completas ou especiais (http, https, blob, data)', () => {
+    expect(resolveNetworkAssetUrl('https://example.com/asset.glb')).toBe('https://example.com/asset.glb');
+    expect(resolveNetworkAssetUrl('blob:http://localhost/123')).toBe('blob:http://localhost/123');
+    expect(resolveNetworkAssetUrl('data:application/json,{}')).toBe('data:application/json,{}');
+  });
+
+  it('resolve caminho padrão quando baseUrl for "/"', () => {
+    expect(resolveNetworkAssetUrl('/assets/v1/manifest.json', '/')).toBe('/assets/v1/manifest.json');
+  });
+
+  it('adiciona prefixo do subdiretório (ex: GitHub Pages "/anatomia/")', () => {
+    expect(resolveNetworkAssetUrl('/assets/v1/manifest.json', '/anatomia/')).toBe(
+      '/anatomia/assets/v1/manifest.json',
+    );
+    expect(resolveNetworkAssetUrl('/assets/v1/skeletal-v1.glb', '/anatomia')).toBe(
+      '/anatomia/assets/v1/skeletal-v1.glb',
+    );
+  });
+
+  it('converte para caminho relativo quando baseUrl for "./" ou vazio', () => {
+    expect(resolveNetworkAssetUrl('/assets/v1/manifest.json', './')).toBe('assets/v1/manifest.json');
+    expect(resolveNetworkAssetUrl('/assets/v1/manifest.json', '')).toBe('assets/v1/manifest.json');
+    expect(resolveNetworkAssetUrl('assets/v1/manifest.json', './')).toBe('assets/v1/manifest.json');
   });
 });
