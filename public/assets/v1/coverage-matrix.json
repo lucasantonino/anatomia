@@ -1,0 +1,345 @@
+{
+  "schemaVersion": "1.0.0",
+  "assetVersion": "v1",
+  "coverageMatrixVersion": "v1",
+  "scopeStatement": "Esta versão (v1) contempla um recorte regional selecionado dos principais ossos (cíngulo do membro superior, braço e antebraço — sem ossos da mão) e principais músculos da cintura escapular e do membro superior bilateral (22 estruturas anatômicas: 10 ossos e 12 músculos, compostas por 36 malhas STL reais do BodyParts3D v3.0). Não cobre ossos da mão, manguito rotador, cabeça, coluna vertebral, caixa torácica óssea, abdome ou membros inferiores; a cobertura completa do corpo humano pertence à Fase 2.",
+  "generatedAt": "2026-11-20T18:11:41.345Z",
+  "structures": [
+    {
+      "anatomyId": "bone.clavicula.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.clavicula.right"
+      ],
+      "fmaIds": [
+        "FMA13322"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.clavicula.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.clavicula.left"
+      ],
+      "fmaIds": [
+        "FMA13323"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.scapula.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.scapula.right"
+      ],
+      "fmaIds": [
+        "FMA13395"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.scapula.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.scapula.left"
+      ],
+      "fmaIds": [
+        "FMA13396"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.humerus.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.humerus.right"
+      ],
+      "fmaIds": [
+        "FMA23130"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.humerus.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.humerus.left"
+      ],
+      "fmaIds": [
+        "FMA23131"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.radius.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.radius.right"
+      ],
+      "fmaIds": [
+        "FMA23464"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.radius.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.radius.left"
+      ],
+      "fmaIds": [
+        "FMA23465"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.ulna.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.ulna.right"
+      ],
+      "fmaIds": [
+        "FMA23467"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "bone.ulna.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "bone.ulna.left"
+      ],
+      "fmaIds": [
+        "FMA23468"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.deltoideus.right",
+      "system": "muscular",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.deltoideus.right.clavicular",
+        "muscle.deltoideus.right.acromial",
+        "muscle.deltoideus.right.spinal"
+      ],
+      "fmaIds": [
+        "FMA34680",
+        "FMA34682",
+        "FMA34684"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.deltoideus.left",
+      "system": "muscular",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.deltoideus.left.clavicular",
+        "muscle.deltoideus.left.acromial",
+        "muscle.deltoideus.left.spinal"
+      ],
+      "fmaIds": [
+        "FMA34681",
+        "FMA34683",
+        "FMA34685"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.pectoralis_major.right",
+      "system": "muscular",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.pectoralis_major.right.clavicular",
+        "muscle.pectoralis_major.right.sternocostal",
+        "muscle.pectoralis_major.right.abdominal"
+      ],
+      "fmaIds": [
+        "FMA34690",
+        "FMA79979",
+        "FMA45874"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.pectoralis_major.left",
+      "system": "muscular",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.pectoralis_major.left.clavicular",
+        "muscle.pectoralis_major.left.sternocostal",
+        "muscle.pectoralis_major.left.abdominal"
+      ],
+      "fmaIds": [
+        "FMA34691",
+        "FMA79980",
+        "FMA45875"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.biceps_brachii.right",
+      "system": "muscular",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.biceps_brachii.right.short_head",
+        "muscle.biceps_brachii.right.long_head"
+      ],
+      "fmaIds": [
+        "FMA37684",
+        "FMA37686"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.biceps_brachii.left",
+      "system": "muscular",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.biceps_brachii.left.short_head",
+        "muscle.biceps_brachii.left.long_head"
+      ],
+      "fmaIds": [
+        "FMA37685",
+        "FMA37687"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.brachialis.right",
+      "system": "muscular",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.brachialis.right"
+      ],
+      "fmaIds": [
+        "FMA37668"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.brachialis.left",
+      "system": "muscular",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.brachialis.left"
+      ],
+      "fmaIds": [
+        "FMA37669"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.triceps_brachii.right",
+      "system": "muscular",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.triceps_brachii.right.medial_head",
+        "muscle.triceps_brachii.right.lateral_head",
+        "muscle.triceps_brachii.right.long_head"
+      ],
+      "fmaIds": [
+        "FMA37695",
+        "FMA37697",
+        "FMA37699"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.triceps_brachii.left",
+      "system": "muscular",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.triceps_brachii.left.medial_head",
+        "muscle.triceps_brachii.left.lateral_head",
+        "muscle.triceps_brachii.left.long_head"
+      ],
+      "fmaIds": [
+        "FMA37696",
+        "FMA37698",
+        "FMA37700"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.brachioradialis.right",
+      "system": "muscular",
+      "laterality": "right",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.brachioradialis.right"
+      ],
+      "fmaIds": [
+        "FMA38486"
+      ],
+      "reviewStatus": "pending_review"
+    },
+    {
+      "anatomyId": "muscle.brachioradialis.left",
+      "system": "muscular",
+      "laterality": "left",
+      "presentInAsset": true,
+      "detailLevel": "segmentado_por_estrutura_e_subpartes",
+      "meshNodes": [
+        "muscle.brachioradialis.left"
+      ],
+      "fmaIds": [
+        "FMA38487"
+      ],
+      "reviewStatus": "pending_review"
+    }
+  ]
+}

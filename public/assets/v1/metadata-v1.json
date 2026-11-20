@@ -1,0 +1,1137 @@
+{
+  "schemaVersion": "1.0.0",
+  "assetVersion": "v1",
+  "metadataVersion": "v1",
+  "terminologyReference": "Terminologia Anatomica (TA2)",
+  "generatedAt": "2026-11-20T18:11:41.345Z",
+  "structures": [
+    {
+      "anatomyId": "bone.clavicula.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Clavícula",
+        "la": "Clavicula"
+      },
+      "scientificName": "Clavicula",
+      "meshNodes": [
+        "bone.clavicula.right"
+      ],
+      "labelAnchor": [
+        -0.072196,
+        0.264056,
+        0.017929
+      ],
+      "focusDirection": [
+        -0.220088,
+        0.380151,
+        0.898358
+      ],
+      "boundingBox": {
+        "min": [
+          -0.149954,
+          0.240706,
+          -0.057289
+        ],
+        "max": [
+          -0.011463,
+          0.275807,
+          0.042178
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA13322"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.clavicula.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Clavícula",
+        "la": "Clavicula"
+      },
+      "scientificName": "Clavicula",
+      "meshNodes": [
+        "bone.clavicula.left"
+      ],
+      "labelAnchor": [
+        0.069505,
+        0.264366,
+        0.018111
+      ],
+      "focusDirection": [
+        0.220088,
+        0.380151,
+        0.898358
+      ],
+      "boundingBox": {
+        "min": [
+          0.010138,
+          0.240736,
+          -0.05733
+        ],
+        "max": [
+          0.148697,
+          0.275787,
+          0.042183
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA13323"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.scapula.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Escápula",
+        "la": "Scapula"
+      },
+      "scientificName": "Scapula",
+      "meshNodes": [
+        "bone.scapula.right"
+      ],
+      "labelAnchor": [
+        -0.089218,
+        0.165686,
+        -0.102164
+      ],
+      "focusDirection": [
+        -0.320005,
+        0.140002,
+        -0.937015
+      ],
+      "boundingBox": {
+        "min": [
+          -0.168662,
+          0.110475,
+          -0.115878
+        ],
+        "max": [
+          -0.059371,
+          0.268796,
+          -0.005498
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA13395"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.scapula.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Escápula",
+        "la": "Scapula"
+      },
+      "scientificName": "Scapula",
+      "meshNodes": [
+        "bone.scapula.left"
+      ],
+      "labelAnchor": [
+        0.087034,
+        0.165916,
+        -0.102716
+      ],
+      "focusDirection": [
+        0.320005,
+        0.140002,
+        -0.937015
+      ],
+      "boundingBox": {
+        "min": [
+          0.058058,
+          0.110525,
+          -0.115904
+        ],
+        "max": [
+          0.167365,
+          0.268776,
+          -0.005529
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA13396"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.humerus.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Úmero",
+        "la": "Humerus"
+      },
+      "scientificName": "Humerus",
+      "meshNodes": [
+        "bone.humerus.right"
+      ],
+      "labelAnchor": [
+        -0.204352,
+        0.089216,
+        -0.030001
+      ],
+      "focusDirection": [
+        -0.449775,
+        0.07996,
+        0.889555
+      ],
+      "boundingBox": {
+        "min": [
+          -0.241448,
+          -0.051555,
+          -0.057389
+        ],
+        "max": [
+          -0.140794,
+          0.255886,
+          -0.007867
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA23130"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.humerus.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Úmero",
+        "la": "Humerus"
+      },
+      "scientificName": "Humerus",
+      "meshNodes": [
+        "bone.humerus.left"
+      ],
+      "labelAnchor": [
+        0.201928,
+        0.088996,
+        -0.029614
+      ],
+      "focusDirection": [
+        0.449775,
+        0.07996,
+        0.889555
+      ],
+      "boundingBox": {
+        "min": [
+          0.139354,
+          -0.051595,
+          -0.057385
+        ],
+        "max": [
+          0.240193,
+          0.255826,
+          -0.007853
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA23131"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.radius.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Rádio",
+        "la": "Radius"
+      },
+      "scientificName": "Radius",
+      "meshNodes": [
+        "bone.radius.right"
+      ],
+      "labelAnchor": [
+        -0.259933,
+        -0.203844,
+        -0.007273
+      ],
+      "focusDirection": [
+        -0.499819,
+        0.049982,
+        0.864687
+      ],
+      "boundingBox": {
+        "min": [
+          -0.280241,
+          -0.27502,
+          -0.047416
+        ],
+        "max": [
+          -0.22033,
+          -0.045584,
+          0.019262
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA23464"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.radius.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Rádio",
+        "la": "Radius"
+      },
+      "scientificName": "Radius",
+      "meshNodes": [
+        "bone.radius.left"
+      ],
+      "labelAnchor": [
+        0.259827,
+        -0.204482,
+        -0.007869
+      ],
+      "focusDirection": [
+        0.499819,
+        0.049982,
+        0.864687
+      ],
+      "boundingBox": {
+        "min": [
+          0.219033,
+          -0.274976,
+          -0.047442
+        ],
+        "max": [
+          0.278895,
+          -0.045653,
+          0.019206
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA23465"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.ulna.right",
+      "system": "skeletal",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Ulna",
+        "la": "Ulna"
+      },
+      "scientificName": "Ulna",
+      "meshNodes": [
+        "bone.ulna.right"
+      ],
+      "labelAnchor": [
+        -0.221949,
+        -0.175908,
+        -0.014684
+      ],
+      "focusDirection": [
+        0.120061,
+        0.050025,
+        0.991505
+      ],
+      "boundingBox": {
+        "min": [
+          -0.248135,
+          -0.275807,
+          -0.06411
+        ],
+        "max": [
+          -0.197255,
+          -0.028143,
+          0.015498
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA23467"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "bone.ulna.left",
+      "system": "skeletal",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Ulna",
+        "la": "Ulna"
+      },
+      "scientificName": "Ulna",
+      "meshNodes": [
+        "bone.ulna.left"
+      ],
+      "labelAnchor": [
+        0.219862,
+        -0.175196,
+        -0.016316
+      ],
+      "focusDirection": [
+        -0.120061,
+        0.050025,
+        0.991505
+      ],
+      "boundingBox": {
+        "min": [
+          0.196007,
+          -0.275792,
+          -0.064062
+        ],
+        "max": [
+          0.246827,
+          -0.028143,
+          0.015522
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA23468"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.deltoideus.right",
+      "system": "muscular",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo deltoide",
+        "la": "Musculus deltoideus"
+      },
+      "scientificName": "Musculus deltoideus",
+      "meshNodes": [
+        "muscle.deltoideus.right.clavicular",
+        "muscle.deltoideus.right.acromial",
+        "muscle.deltoideus.right.spinal"
+      ],
+      "labelAnchor": [
+        -0.22492,
+        0.203106,
+        -0.026925
+      ],
+      "focusDirection": [
+        -0.900855,
+        0.139977,
+        0.410934
+      ],
+      "boundingBox": {
+        "min": [
+          -0.228088,
+          0.106996,
+          -0.106407
+        ],
+        "max": [
+          -0.082469,
+          0.274337,
+          0.013117
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA34680",
+          "FMA34682",
+          "FMA34684"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.deltoideus.left",
+      "system": "muscular",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo deltoide",
+        "la": "Musculus deltoideus"
+      },
+      "scientificName": "Musculus deltoideus",
+      "meshNodes": [
+        "muscle.deltoideus.left.clavicular",
+        "muscle.deltoideus.left.acromial",
+        "muscle.deltoideus.left.spinal"
+      ],
+      "labelAnchor": [
+        0.223946,
+        0.200156,
+        -0.027004
+      ],
+      "focusDirection": [
+        0.900855,
+        0.139977,
+        0.410934
+      ],
+      "boundingBox": {
+        "min": [
+          0.081208,
+          0.107285,
+          -0.106486
+        ],
+        "max": [
+          0.226715,
+          0.274276,
+          0.013085
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA34681",
+          "FMA34683",
+          "FMA34685"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.pectoralis_major.right",
+      "system": "muscular",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo peitoral maior",
+        "la": "Musculus pectoralis major"
+      },
+      "scientificName": "Musculus pectoralis major",
+      "meshNodes": [
+        "muscle.pectoralis_major.right.clavicular",
+        "muscle.pectoralis_major.right.sternocostal",
+        "muscle.pectoralis_major.right.abdominal"
+      ],
+      "labelAnchor": [
+        -0.096965,
+        0.143446,
+        0.101936
+      ],
+      "focusDirection": [
+        -0.249984,
+        0.079995,
+        0.96494
+      ],
+      "boundingBox": {
+        "min": [
+          -0.194583,
+          0.030446,
+          -0.022936
+        ],
+        "max": [
+          -0.004087,
+          0.260627,
+          0.115877
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA34690",
+          "FMA79979",
+          "FMA45874"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.pectoralis_major.left",
+      "system": "muscular",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo peitoral maior",
+        "la": "Musculus pectoralis major"
+      },
+      "scientificName": "Musculus pectoralis major",
+      "meshNodes": [
+        "muscle.pectoralis_major.left.clavicular",
+        "muscle.pectoralis_major.left.sternocostal",
+        "muscle.pectoralis_major.left.abdominal"
+      ],
+      "labelAnchor": [
+        0.0985,
+        0.129946,
+        0.104463
+      ],
+      "focusDirection": [
+        0.249984,
+        0.079995,
+        0.96494
+      ],
+      "boundingBox": {
+        "min": [
+          0.002499,
+          0.030685,
+          -0.022733
+        ],
+        "max": [
+          0.193001,
+          0.260306,
+          0.115916
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA34691",
+          "FMA79980",
+          "FMA45875"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.biceps_brachii.right",
+      "system": "muscular",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo bíceps braquial",
+        "la": "Musculus biceps brachii"
+      },
+      "scientificName": "Musculus biceps brachii",
+      "meshNodes": [
+        "muscle.biceps_brachii.right.short_head",
+        "muscle.biceps_brachii.right.long_head"
+      ],
+      "labelAnchor": [
+        -0.182294,
+        0.089356,
+        0.000881
+      ],
+      "focusDirection": [
+        -0.300014,
+        0.060003,
+        0.952046
+      ],
+      "boundingBox": {
+        "min": [
+          -0.230536,
+          -0.086685,
+          -0.046523
+        ],
+        "max": [
+          -0.130356,
+          0.259076,
+          0.001424
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA37684",
+          "FMA37686"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.biceps_brachii.left",
+      "system": "muscular",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo bíceps braquial",
+        "la": "Musculus biceps brachii"
+      },
+      "scientificName": "Musculus biceps brachii",
+      "meshNodes": [
+        "muscle.biceps_brachii.left.short_head",
+        "muscle.biceps_brachii.left.long_head"
+      ],
+      "labelAnchor": [
+        0.184784,
+        0.082076,
+        0.000235
+      ],
+      "focusDirection": [
+        0.300014,
+        0.060003,
+        0.952046
+      ],
+      "boundingBox": {
+        "min": [
+          0.133044,
+          -0.086315,
+          -0.046347
+        ],
+        "max": [
+          0.229193,
+          0.259056,
+          0.001429
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA37685",
+          "FMA37687"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.brachialis.right",
+      "system": "muscular",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo braquial",
+        "la": "Musculus brachialis"
+      },
+      "scientificName": "Musculus brachialis",
+      "meshNodes": [
+        "muscle.brachialis.right"
+      ],
+      "labelAnchor": [
+        -0.228238,
+        0.037076,
+        -0.025721
+      ],
+      "focusDirection": [
+        -0.781997,
+        0.04,
+        0.621998
+      ],
+      "boundingBox": {
+        "min": [
+          -0.235723,
+          -0.085395,
+          -0.047934
+        ],
+        "max": [
+          -0.176753,
+          0.139446,
+          -0.021164
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA37668"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.brachialis.left",
+      "system": "muscular",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo braquial",
+        "la": "Musculus brachialis"
+      },
+      "scientificName": "Musculus brachialis",
+      "meshNodes": [
+        "muscle.brachialis.left"
+      ],
+      "labelAnchor": [
+        0.2299,
+        0.038326,
+        -0.027623
+      ],
+      "focusDirection": [
+        0.781997,
+        0.04,
+        0.621998
+      ],
+      "boundingBox": {
+        "min": [
+          0.175537,
+          -0.085185,
+          -0.047865
+        ],
+        "max": [
+          0.234394,
+          0.139127,
+          -0.021217
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA37669"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.triceps_brachii.right",
+      "system": "muscular",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo tríceps braquial",
+        "la": "Musculus triceps brachii"
+      },
+      "scientificName": "Musculus triceps brachii",
+      "meshNodes": [
+        "muscle.triceps_brachii.right.medial_head",
+        "muscle.triceps_brachii.right.lateral_head",
+        "muscle.triceps_brachii.right.long_head"
+      ],
+      "labelAnchor": [
+        -0.188338,
+        0.094046,
+        -0.089551
+      ],
+      "focusDirection": [
+        -0.379832,
+        0.079965,
+        -0.921593
+      ],
+      "boundingBox": {
+        "min": [
+          -0.229361,
+          -0.051345,
+          -0.089552
+        ],
+        "max": [
+          -0.128463,
+          0.217766,
+          -0.036372
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA37695",
+          "FMA37697",
+          "FMA37699"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.triceps_brachii.left",
+      "system": "muscular",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo tríceps braquial",
+        "la": "Musculus triceps brachii"
+      },
+      "scientificName": "Musculus triceps brachii",
+      "meshNodes": [
+        "muscle.triceps_brachii.left.medial_head",
+        "muscle.triceps_brachii.left.lateral_head",
+        "muscle.triceps_brachii.left.long_head"
+      ],
+      "labelAnchor": [
+        0.187026,
+        0.094236,
+        -0.089521
+      ],
+      "focusDirection": [
+        0.379832,
+        0.079965,
+        -0.921593
+      ],
+      "boundingBox": {
+        "min": [
+          0.127097,
+          -0.051434,
+          -0.089522
+        ],
+        "max": [
+          0.22806,
+          0.217766,
+          -0.036395
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA37696",
+          "FMA37698",
+          "FMA37700"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.brachioradialis.right",
+      "system": "muscular",
+      "laterality": "right",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo braquiorradial",
+        "la": "Musculus brachioradialis"
+      },
+      "scientificName": "Musculus brachioradialis",
+      "meshNodes": [
+        "muscle.brachioradialis.right"
+      ],
+      "labelAnchor": [
+        -0.256859,
+        -0.056054,
+        -0.011149
+      ],
+      "focusDirection": [
+        -0.721064,
+        0.050004,
+        0.691062
+      ],
+      "boundingBox": {
+        "min": [
+          -0.281241,
+          -0.270948,
+          -0.052426
+        ],
+        "max": [
+          -0.208813,
+          0.066576,
+          0.014671
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA38486"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    },
+    {
+      "anatomyId": "muscle.brachioradialis.left",
+      "system": "muscular",
+      "laterality": "left",
+      "region": "upper_limb",
+      "displayName": {
+        "pt-BR": "Músculo braquiorradial",
+        "la": "Musculus brachioradialis"
+      },
+      "scientificName": "Musculus brachioradialis",
+      "meshNodes": [
+        "muscle.brachioradialis.left"
+      ],
+      "labelAnchor": [
+        0.255081,
+        -0.054314,
+        -0.011607
+      ],
+      "focusDirection": [
+        0.721064,
+        0.050004,
+        0.691062
+      ],
+      "boundingBox": {
+        "min": [
+          0.207806,
+          -0.270805,
+          -0.052396
+        ],
+        "max": [
+          0.279779,
+          0.066727,
+          0.01466
+        ]
+      },
+      "source": {
+        "assetVersion": "v1",
+        "referenceIds": [
+          "BP3D-v3.0"
+        ],
+        "fmaIds": [
+          "FMA38487"
+        ]
+      },
+      "review": {
+        "status": "pending_review",
+        "reviewedBy": "unassigned",
+        "reviewedAt": null
+      }
+    }
+  ]
+}

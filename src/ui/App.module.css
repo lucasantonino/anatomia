@@ -1,0 +1,217 @@
+.shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.main {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-header);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: calc(3px + var(--safe-top)) calc(8px + var(--safe-right)) 3px
+    calc(8px + var(--safe-left));
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 0, 0, 0.56) 72%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  pointer-events: none;
+  transition: right var(--transition-panel);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  background-color: rgba(18, 20, 24, 0.72);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.versionBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--surface-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+.headerButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--surface-panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.headerButton:hover {
+  background-color: var(--surface-elevated);
+  border-color: var(--border-strong);
+}
+
+.headerButtonActive {
+  background-color: var(--surface-active);
+  border-color: var(--accent-primary);
+}
+
+.iconOnlyMobile {
+  padding: 0;
+}
+
+.iconGlyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.compactText {
+  display: inline;
+}
+
+.fullTextMobileHidden {
+  display: none;
+}
+
+.desktopOnlyText {
+  display: none;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (min-width: 480px) {
+  .header {
+    padding: calc(8px + var(--safe-top)) calc(12px + var(--safe-right)) 8px
+      calc(12px + var(--safe-left));
+  }
+
+  .title {
+    font-size: 0.9375rem;
+  }
+
+  .nav {
+    gap: 6px;
+  }
+
+  .compactText {
+    display: none;
+  }
+
+  .fullTextMobileHidden {
+    display: inline;
+  }
+}
+
+@media (min-width: 768px) {
+  .header {
+    padding: calc(12px + var(--safe-top)) calc(16px + var(--safe-right)) 10px
+      calc(16px + var(--safe-left));
+  }
+
+  .headerWithDrawer {
+    right: min(360px, 34vw);
+  }
+
+  .brand {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .title {
+    font-size: 1rem;
+  }
+
+  .nav {
+    gap: 8px;
+  }
+
+  .headerButton {
+    font-size: 0.875rem;
+    padding: 0 12px;
+  }
+
+  .iconOnlyMobile {
+    padding: 0 12px;
+  }
+
+  .desktopOnlyText {
+    display: inline;
+  }
+}

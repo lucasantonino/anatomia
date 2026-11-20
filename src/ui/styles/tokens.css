@@ -1,0 +1,135 @@
+/* ==========================================================================
+   Anatomia 3D — Design Tokens Clínicos e Reset Base (WCAG 2.2 AA)
+   Estética: Atlas médico-científico contemporâneo sobre fundo #000000 puro.
+   Referência: docs/ux-interacao-e-acessibilidade.md e ADR-004.
+   ========================================================================== */
+
+:root {
+  /* Superfícies */
+  --bg-canvas: #000000;
+  --surface-panel: rgba(18, 20, 24, 0.9);
+  --surface-panel-solid: #121418;
+  --surface-elevated: #181b22;
+  --surface-interactive: rgba(255, 255, 255, 0.06);
+  --surface-interactive-hover: rgba(255, 255, 255, 0.13);
+  --surface-active: rgba(88, 184, 255, 0.2);
+  --backdrop-scrim: rgba(0, 0, 0, 0.72);
+
+  /* Bordas */
+  --border-subtle: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(255, 255, 255, 0.36);
+
+  /* Tipografia e cores de texto (contraste AA/AAA sobre #000000 e #121418) */
+  --text-primary: #f4f6fa;
+  --text-secondary: #b8c0cc;
+  --text-on-accent: #05080d;
+
+  /* Acentos clínicos e semânticos (sempre acompanhados de rótulo textual) */
+  --accent-primary: #58b8ff;
+  --accent-muscle: #e07a72;
+  --accent-bone: #e5dec9;
+  --status-warning: #f2b84b;
+  --status-error: #ff6b6b;
+
+  /* Foco visível de alto contraste (WCAG 2.2 AA 2.4.7 / 2.4.11) */
+  --focus-ring-color: #7ccbff;
+  --focus-ring: 2px solid var(--focus-ring-color);
+  --focus-ring-offset: 2px;
+
+  /* Tipografia */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  /* Geometria e alvos táteis (WCAG 2.2 AA + Spec Seção 14: >= 44 x 44 px) */
+  --touch-target-min: 44px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Safe areas iOS Safari / Chrome Android */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  /* Camadas de empilhamento (z-index) */
+  --z-canvas: 1;
+  --z-label: 20;
+  --z-controls: 30;
+  --z-status-banner: 38;
+  --z-status-blocking: 42;
+  --z-header: 45;
+  --z-label-fallback: 46;
+  --z-drawer-backdrop: 50;
+  --z-drawer: 55;
+  --z-modal: 70;
+
+  /* Transições sutis */
+  --transition-fast: 140ms ease;
+  --transition-panel: 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Sombra clínica discreta */
+  --shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.45;
+  overflow: hidden;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: var(--accent-primary);
+}
+
+a:hover {
+  color: var(--focus-ring-color);
+}
+
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

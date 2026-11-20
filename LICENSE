@@ -1,0 +1,40 @@
+MIT License
+
+Copyright (c) 2026 Anatomia 3D Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Notice Regarding 3D Anatomical Assets (CC BY-SA 2.1 JP)
+
+The MIT License above applies exclusively to the source code, build/validation
+scripts, stylesheets, tests, and software documentation authored for Anatomia 3D.
+
+The derived 3D anatomical assets located under `public/assets/` (including
+`.glb` files and derived geometric/anatomical assets) are based on BodyParts3D
+v3.0 ("BodyParts3D, Copyright 2008 Life Science Integrated Database Center
+(DBCLS)") and are licensed separately under the Creative Commons
+Attribution-ShareAlike 2.1 Japan License (`CC BY-SA 2.1 JP`):
+https://creativecommons.org/licenses/by-sa/2.1/jp/deed.en
+
+Any redistribution or adaptation of the 3D assets under `public/assets/` must
+comply with the attribution and ShareAlike terms of `CC BY-SA 2.1 JP`.
+Reference files under `sources/` are read-only and governed by their respective
+original licenses.
