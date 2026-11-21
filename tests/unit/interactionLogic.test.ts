@@ -416,7 +416,7 @@ describe('evaluateTapGesture e TapGestureClassifier (RF-06 Tap vs. Drag / Pinça
   });
 });
 
-describe('MaterialManager (reversibilidade, multi-malha e opacidade muscular em Node)', () => {
+describe('MaterialManager (pool de 6 materiais PBR compartilhados, multi-malha e opacidade em Node)', () => {
   function createMesh(name: string): THREE.Mesh {
     const mesh = new THREE.Mesh(
       new THREE.BufferGeometry(),
@@ -426,17 +426,25 @@ describe('MaterialManager (reversibilidade, multi-malha e opacidade muscular em 
     return mesh;
   }
 
-  it('garante realce 100% reversível (default -> hovered -> selected -> default) sincronizado entre múltiplas cabeças do mesmo anatomyId', () => {
+  function getMat(mesh: THREE.Mesh): THREE.MeshStandardMaterial {
+    return mesh.material as THREE.MeshStandardMaterial;
+  }
+
+  it('compartilha 6 materiais PBR por sistema/estado e garante realce 100% reversível (default -> hovered -> selected -> default) em multi-malha', () => {
     const manager = new MaterialManager();
 
     const bicepsShortHead = createMesh('muscle.biceps_brachii.left.short_head');
     const bicepsLongHead = createMesh('muscle.biceps_brachii.left.long_head');
     const deltoidAcromial = createMesh('muscle.deltoideus.left.acromial');
     const claviculaRight = createMesh('bone.clavicula.right');
+    const femurRight = createMesh('bone.femur.right');
 
     manager.registerSystemMeshes(
       'skeletal',
-      new Map([['bone.clavicula.right', [claviculaRight]]]),
+      new Map([
+        ['bone.clavicula.right', [claviculaRight]],
+        ['bone.femur.right', [femurRight]],
+      ]),
     );
     manager.registerSystemMeshes(
       'muscular',
@@ -446,62 +454,88 @@ describe('MaterialManager (reversibilidade, multi-malha e opacidade muscular em 
       ]),
     );
 
-    // Ambas as cabeças do bíceps compartilham o mesmo MeshStandardMaterial gerenciado
+    // Em repouso, todas as malhas do mesmo sistema compartilham exatamente o mesmo material PBR base
     expect(bicepsShortHead.material).toBe(bicepsLongHead.material);
-    expect(bicepsShortHead.material).not.toBe(deltoidAcromial.material);
+    expect(bicepsShortHead.material).toBe(deltoidAcromial.material);
+    expect(claviculaRight.material).toBe(femurRight.material);
+    expect(bicepsShortHead.material).not.toBe(claviculaRight.material);
 
-    const bicepsMat = bicepsShortHead.material as THREE.MeshStandardMaterial;
-    const deltoidMat = deltoidAcromial.material as THREE.MeshStandardMaterial;
-    const boneMat = claviculaRight.material as THREE.MeshStandardMaterial;
-
-    const baseMuscleHex = bicepsMat.color.getHex();
-    const baseBoneHex = boneMat.color.getHex();
+    const muscleDefaultMat = getMat(bicepsShortHead);
+    const boneDefaultMat = getMat(claviculaRight);
+    const baseMuscleHex = muscleDefaultMat.color.getHex();
+    const baseBoneHex = boneDefaultMat.color.getHex();
     expect(baseMuscleHex).toBe(CLINICAL_MUSCLE_MATERIAL.colorHex);
     expect(baseBoneHex).toBe(CLINICAL_BONE_MATERIAL.colorHex);
 
-    // Estado hovered no bíceps
+    // Estado hovered no bíceps: ambas as cabeças migram para o material hovered compartilhado; deltoide permanece em default
     manager.syncHighlights('muscle.biceps_brachii.left', null);
-    expect(bicepsMat.emissive.getHex()).toBe(
+    expect(bicepsShortHead.material).toBe(bicepsLongHead.material);
+    expect(bicepsShortHead.material).not.toBe(deltoidAcromial.material);
+    expect(deltoidAcromial.material).toBe(muscleDefaultMat);
+
+    const bicepsHoverMat = getMat(bicepsShortHead);
+    expect(bicepsHoverMat.emissive.getHex()).toBe(
       CLINICAL_MUSCLE_MATERIAL.highlightEmissiveHex,
     );
-    expect(bicepsMat.emissiveIntensity).toBe(
+    expect(bicepsHoverMat.emissiveIntensity).toBe(
       CLINICAL_MUSCLE_MATERIAL.hoverEmissiveIntensity,
     );
-    expect(deltoidMat.emissiveIntensity).toBe(0);
+    expect(getMat(deltoidAcromial).emissiveIntensity).toBe(0);
 
-    // Estado selected no bíceps + hovered no osso simultaneamente
+    // Estado selected no bíceps + hovered na clavícula simultaneamente
     manager.syncHighlights('bone.clavicula.right', 'muscle.biceps_brachii.left');
-    expect(bicepsMat.emissiveIntensity).toBe(
+    expect(bicepsShortHead.material).toBe(bicepsLongHead.material);
+    expect(bicepsShortHead.material).not.toBe(bicepsHoverMat);
+    expect(bicepsShortHead.material).not.toBe(muscleDefaultMat);
+    expect(getMat(bicepsShortHead).emissiveIntensity).toBe(
       CLINICAL_MUSCLE_MATERIAL.selectedEmissiveIntensity,
     );
-    expect(boneMat.emissive.getHex()).toBe(
+
+    expect(claviculaRight.material).not.toBe(boneDefaultMat);
+    expect(femurRight.material).toBe(boneDefaultMat);
+    expect(getMat(claviculaRight).emissive.getHex()).toBe(
       CLINICAL_BONE_MATERIAL.highlightEmissiveHex,
     );
-    expect(boneMat.emissiveIntensity).toBe(
+    expect(getMat(claviculaRight).emissiveIntensity).toBe(
       CLINICAL_BONE_MATERIAL.hoverEmissiveIntensity,
     );
+    expect(getMat(femurRight).emissiveIntensity).toBe(0);
 
-    // Retorno a default: 100% reversível
+    // Retorno a default: 100% reversível, devolvendo exatamente os materiais base compartilhados
     manager.syncHighlights(null, null);
-    expect(bicepsMat.color.getHex()).toBe(baseMuscleHex);
-    expect(bicepsMat.emissive.getHex()).toBe(0x000000);
-    expect(bicepsMat.emissiveIntensity).toBe(0);
-    expect(bicepsMat.roughness).toBe(CLINICAL_MUSCLE_MATERIAL.roughness);
-    expect(bicepsMat.metalness).toBe(CLINICAL_MUSCLE_MATERIAL.metalness);
+    expect(bicepsShortHead.material).toBe(muscleDefaultMat);
+    expect(bicepsLongHead.material).toBe(muscleDefaultMat);
+    expect(deltoidAcromial.material).toBe(muscleDefaultMat);
+    expect(getMat(bicepsShortHead).color.getHex()).toBe(baseMuscleHex);
+    expect(getMat(bicepsShortHead).emissive.getHex()).toBe(0x000000);
+    expect(getMat(bicepsShortHead).emissiveIntensity).toBe(0);
+    expect(getMat(bicepsShortHead).roughness).toBe(
+      CLINICAL_MUSCLE_MATERIAL.roughness,
+    );
+    expect(getMat(bicepsShortHead).metalness).toBe(
+      CLINICAL_MUSCLE_MATERIAL.metalness,
+    );
 
-    expect(boneMat.color.getHex()).toBe(baseBoneHex);
-    expect(boneMat.emissive.getHex()).toBe(0x000000);
-    expect(boneMat.emissiveIntensity).toBe(0);
-    expect(boneMat.roughness).toBe(CLINICAL_BONE_MATERIAL.roughness);
-    expect(boneMat.metalness).toBe(CLINICAL_BONE_MATERIAL.metalness);
+    expect(claviculaRight.material).toBe(boneDefaultMat);
+    expect(femurRight.material).toBe(boneDefaultMat);
+    expect(getMat(claviculaRight).color.getHex()).toBe(baseBoneHex);
+    expect(getMat(claviculaRight).emissive.getHex()).toBe(0x000000);
+    expect(getMat(claviculaRight).emissiveIntensity).toBe(0);
+    expect(getMat(claviculaRight).roughness).toBe(
+      CLINICAL_BONE_MATERIAL.roughness,
+    );
+    expect(getMat(claviculaRight).metalness).toBe(
+      CLINICAL_BONE_MATERIAL.metalness,
+    );
 
     manager.dispose();
   });
 
-  it('alterna opaco <-> translúcido nos músculos somente no modo Ambos e mantém sólido em Músculos isolado', () => {
+  it('alterna opaco <-> translúcido nos materiais musculares compartilhados (default e selected) somente em Ambos e mantém sólido em Músculos isolado', () => {
     const manager = new MaterialManager();
     const boneMesh = createMesh('bone.humerus.right');
     const muscleMesh = createMesh('muscle.brachialis.right');
+    const selectedMuscleMesh = createMesh('muscle.deltoideus.right.acromial');
 
     manager.registerSystemMeshes(
       'skeletal',
@@ -509,45 +543,65 @@ describe('MaterialManager (reversibilidade, multi-malha e opacidade muscular em 
     );
     manager.registerSystemMeshes(
       'muscular',
-      new Map([['muscle.brachialis.right', [muscleMesh]]]),
+      new Map([
+        ['muscle.brachialis.right', [muscleMesh]],
+        ['muscle.deltoideus.right', [selectedMuscleMesh]],
+      ]),
     );
+    manager.syncHighlights(null, 'muscle.deltoideus.right');
 
-    const boneMat = boneMesh.material as THREE.MeshStandardMaterial;
-    const muscleMat = muscleMesh.material as THREE.MeshStandardMaterial;
     const both = new Set<'muscular' | 'skeletal'>(['muscular', 'skeletal']);
     const muscularOnly = new Set<'muscular' | 'skeletal'>(['muscular']);
 
     // Ambos + opacidade 1.0 -> opaco (evita artefatos de depth sorting)
     manager.applyLayerAppearance(both, 1.0);
-    expect(muscleMat.transparent).toBe(false);
-    expect(muscleMat.depthWrite).toBe(true);
-    expect(muscleMat.opacity).toBe(1);
+    expect(getMat(muscleMesh).transparent).toBe(false);
+    expect(getMat(muscleMesh).depthWrite).toBe(true);
+    expect(getMat(muscleMesh).opacity).toBe(1);
+    expect(getMat(selectedMuscleMesh).transparent).toBe(false);
+    expect(getMat(selectedMuscleMesh).depthWrite).toBe(true);
+    expect(getMat(selectedMuscleMesh).opacity).toBe(1);
     expect(muscleMesh.renderOrder).toBe(1);
+    expect(selectedMuscleMesh.renderOrder).toBe(1);
     expect(boneMesh.renderOrder).toBe(1);
 
-    // Ambos + opacidade 0.6 -> músculos translúcidos, renderOrder 2 vs ossos renderOrder 1
+    // Ambos + opacidade 0.6 -> todos os estados musculares translúcidos, renderOrder 2 vs ossos renderOrder 1
     manager.applyLayerAppearance(both, 0.6);
-    expect(muscleMat.transparent).toBe(true);
-    expect(muscleMat.depthWrite).toBe(false);
-    expect(muscleMat.opacity).toBe(0.6);
+    expect(getMat(muscleMesh).transparent).toBe(true);
+    expect(getMat(muscleMesh).depthWrite).toBe(false);
+    expect(getMat(muscleMesh).opacity).toBe(0.6);
+    expect(getMat(selectedMuscleMesh).transparent).toBe(true);
+    expect(getMat(selectedMuscleMesh).depthWrite).toBe(false);
+    expect(getMat(selectedMuscleMesh).opacity).toBe(0.6);
     expect(muscleMesh.renderOrder).toBe(2);
-    expect(boneMat.transparent).toBe(false);
-    expect(boneMat.depthWrite).toBe(true);
+    expect(selectedMuscleMesh.renderOrder).toBe(2);
+    expect(getMat(boneMesh).transparent).toBe(false);
+    expect(getMat(boneMesh).depthWrite).toBe(true);
     expect(boneMesh.renderOrder).toBe(1);
 
     // Somente músculos + muscleOpacity 0.2 -> permanece sólido/opaco!
     manager.applyLayerAppearance(muscularOnly, 0.2);
-    expect(muscleMat.transparent).toBe(false);
-    expect(muscleMat.depthWrite).toBe(true);
-    expect(muscleMat.opacity).toBe(1);
+    expect(getMat(muscleMesh).transparent).toBe(false);
+    expect(getMat(muscleMesh).depthWrite).toBe(true);
+    expect(getMat(muscleMesh).opacity).toBe(1);
+    expect(getMat(selectedMuscleMesh).transparent).toBe(false);
+    expect(getMat(selectedMuscleMesh).depthWrite).toBe(true);
+    expect(getMat(selectedMuscleMesh).opacity).toBe(1);
     expect(muscleMesh.renderOrder).toBe(1);
+    expect(selectedMuscleMesh.renderOrder).toBe(1);
 
-    // Volta para Ambos + 0.2 -> reassume modo translúcido
+    // Volta para Ambos + 0.2 -> reassume modo translúcido e preserva após reapplyAll()
     manager.applyLayerAppearance(both, 0.2);
-    expect(muscleMat.transparent).toBe(true);
-    expect(muscleMat.depthWrite).toBe(false);
-    expect(muscleMat.opacity).toBe(0.2);
+    manager.reapplyAll();
+    expect(getMat(muscleMesh).transparent).toBe(true);
+    expect(getMat(muscleMesh).depthWrite).toBe(false);
+    expect(getMat(muscleMesh).opacity).toBe(0.2);
+    expect(getMat(selectedMuscleMesh).opacity).toBe(0.2);
+    expect(getMat(selectedMuscleMesh).emissiveIntensity).toBe(
+      CLINICAL_MUSCLE_MATERIAL.selectedEmissiveIntensity,
+    );
     expect(muscleMesh.renderOrder).toBe(2);
+    expect(selectedMuscleMesh.renderOrder).toBe(2);
 
     manager.dispose();
   });

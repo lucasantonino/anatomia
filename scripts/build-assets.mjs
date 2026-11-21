@@ -9,29 +9,31 @@ import { meshopt } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer/encoder';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 
-import {
-  ANATOMY_CATALOG,
-  ASSET_VERSION,
-  BODYPARTS3D_BASE_URL,
-  COORDINATE_SYSTEM,
-  COVERAGE_MATRIX_VERSION,
-  DETAIL_LEVEL,
-  LICENSE_INFO,
-  METADATA_VERSION,
-  SCHEMA_VERSION,
-  SCOPE_STATEMENT,
-  TERMINOLOGY_REFERENCE,
-  listAllCatalogParts,
-} from './anatomy-catalog.mjs';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const CACHE_DIR = path.join(ROOT_DIR, '.cache', 'bodyparts3d');
-const OUTPUT_DIR = path.join(ROOT_DIR, 'public', 'assets', ASSET_VERSION);
 
-const DOWNLOAD_CONCURRENCY = 6;
-const DOWNLOAD_MAX_RETRIES = 3;
+const DOWNLOAD_CONCURRENCY = 8;
+const DOWNLOAD_MAX_RETRIES = 5;
+const MIDLINE_MAX_ABS_X_METERS = 0.06; // 6 cm
+const BILATERAL_WARN_METERS = 0.045; // 4,5 cm
+
+function parseVersionArg() {
+  const arg = process.argv.find((a) => a.startsWith('--version='));
+  const value = arg ? arg.split('=')[1].trim() : 'v2';
+  if (value !== 'v1' && value !== 'v2') {
+    throw new Error(`Versão inválida "${value}". Use --version=v1 ou --version=v2.`);
+  }
+  return value;
+}
+
+async function loadCatalogForVersion(version) {
+  if (version === 'v1') {
+    return import('./anatomy-catalog.mjs');
+  }
+  return import('./anatomy-catalog-v2.mjs');
+}
 
 function sha256Hex(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
@@ -68,71 +70,106 @@ async function writeFileAtomic(targetPath, data) {
 }
 
 /**
- * Baixa um STL do BodyParts3D com cache local em `.cache/bodyparts3d/` e retries.
+ * Valida estrutura de STL binário (header 80 B + uint32 triCount + 50 B por triângulo)
+ * e calcula BBox em metros já aplicando a rotação rígida SO(3) (x/1000, z/1000, -y/1000).
  */
-async function fetchStlWithCache(part) {
-  const cachePath = path.join(CACHE_DIR, `${part.fmaId}.stl`);
+function inspectStlBuffer(buffer, stlId) {
+  if (buffer.byteLength < 84) {
+    throw new Error(`STL truncado (${buffer.byteLength} B) para ${stlId}`);
+  }
+  const triCount = buffer.readUInt32LE(80);
+  const expectedStlSize = 84 + triCount * 50;
+  if (buffer.byteLength !== expectedStlSize) {
+    throw new Error(
+      `Formato STL binário inválido para ${stlId}: esperado ${expectedStlSize} B para ${triCount} triângulos, recebido ${buffer.byteLength} B`,
+    );
+  }
+
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+
+  for (let t = 0; t < triCount; t++) {
+    const base = 84 + t * 50;
+    for (let v = 0; v < 3; v++) {
+      const off = base + 12 + v * 12;
+      const gx = buffer.readFloatLE(off) / 1000;
+      const gy = buffer.readFloatLE(off + 8) / 1000;
+      const gz = -buffer.readFloatLE(off + 4) / 1000;
+      if (gx < min[0]) min[0] = gx;
+      if (gy < min[1]) min[1] = gy;
+      if (gz < min[2]) min[2] = gz;
+      if (gx > max[0]) max[0] = gx;
+      if (gy > max[1]) max[1] = gy;
+      if (gz > max[2]) max[2] = gz;
+    }
+  }
+
+  return {
+    rawTriangles: triCount,
+    bytes: buffer.byteLength,
+    sha256: sha256Hex(buffer),
+    min,
+    max,
+  };
+}
+
+/**
+ * Baixa um STL do BodyParts3D com cache em `.cache/bodyparts3d/` e backoff exponencial + jitter.
+ * Retorna apenas metadados/hashes/BBox sem reter o buffer bruto na memória RAM.
+ */
+async function ensureStlCachedAndInspect(part, baseUrl) {
+  const stlId = part.stlId ?? part.fmaId;
+  const cachePath = path.join(CACHE_DIR, `${stlId}.stl`);
 
   try {
     const stat = await fs.stat(cachePath);
-    if (stat.size === part.expectedBytes) {
-      const buffer = await fs.readFile(cachePath);
-      return {
-        buffer,
-        fromCache: true,
-        sha256: sha256Hex(buffer),
-        bytes: buffer.byteLength,
-      };
+    if (stat.size > 84) {
+      const expectedBytes = part.expectedBytes;
+      if (!expectedBytes || stat.size === expectedBytes) {
+        const buffer = await fs.readFile(cachePath);
+        const inspected = inspectStlBuffer(buffer, stlId);
+        return { stlId, cachePath, fromCache: true, ...inspected };
+      }
     }
   } catch {
     // Cache miss — prosseguir com download
   }
 
-  const url = `${BODYPARTS3D_BASE_URL}/${part.fmaId}.stl`;
+  const url = `${baseUrl}/${stlId}.stl`;
   let lastError = null;
 
   for (let attempt = 1; attempt <= DOWNLOAD_MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(url, {
-        headers: { 'User-Agent': 'anatomia-3d-asset-pipeline/1.0' },
+        headers: { 'User-Agent': 'anatomia-3d-asset-pipeline/2.0' },
       });
 
+      if (response.status === 429 || response.status === 503 || response.status >= 500) {
+        throw new Error(`HTTP ${response.status} ${response.statusText} (retentável) ao baixar ${url}`);
+      }
       if (!response.ok) {
         throw new Error(`HTTP ${response.status} ${response.statusText} ao baixar ${url}`);
       }
 
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-
-      if (buffer.byteLength < 84) {
-        throw new Error(`STL truncado (${buffer.byteLength} B) para ${part.fmaId}`);
-      }
-
-      const triCount = buffer.readUInt32LE(80);
-      const expectedStlSize = 84 + triCount * 50;
-      if (buffer.byteLength !== expectedStlSize) {
-        throw new Error(
-          `Formato STL binário inválido para ${part.fmaId}: esperado ${expectedStlSize} B para ${triCount} triângulos, recebido ${buffer.byteLength} B`,
-        );
-      }
+      const inspected = inspectStlBuffer(buffer, stlId);
 
       await writeFileAtomic(cachePath, buffer);
-      return {
-        buffer,
-        fromCache: false,
-        sha256: sha256Hex(buffer),
-        bytes: buffer.byteLength,
-      };
+      return { stlId, cachePath, fromCache: false, ...inspected };
     } catch (error) {
       lastError = error;
       if (attempt < DOWNLOAD_MAX_RETRIES) {
-        const delayMs = 500 * Math.pow(2, attempt - 1);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        const baseDelay = 600 * Math.pow(2, attempt - 1);
+        const jitter = Math.floor(Math.random() * 400);
+        await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
       }
     }
   }
 
-  throw new Error(`Falha ao baixar ${part.fmaId} após ${DOWNLOAD_MAX_RETRIES} tentativas: ${lastError?.message}`);
+  throw new Error(
+    `Falha ao baixar ${stlId} após ${DOWNLOAD_MAX_RETRIES} tentativas: ${lastError?.message}`,
+  );
 }
 
 async function mapWithConcurrency(items, concurrency, fn) {
@@ -153,34 +190,37 @@ async function mapWithConcurrency(items, concurrency, fn) {
 
 /**
  * Faz parsing de STL binário, aplica rotação rígida SO(3) (x/1000, z/1000, -y/1000)
- * e solda vértices duplicados em grade sub-micrométrica (1e-6 m = 0,001 mm).
+ * + sceneOriginOffset embutido nos vértices e solda vértices duplicados em grade 1e-6 m.
+ * Usa chaves BigInt de 69 bits para eficiência de memória e velocidade em malhas grandes.
  */
-function parseAndWeldBinaryStl(buffer, fmaId) {
-  if (buffer.byteLength < 84) {
-    throw new Error(`Arquivo STL muito curto para ${fmaId}: ${buffer.byteLength} B`);
-  }
-
+function parseTransformAndWeldBinaryStl(buffer, stlId, sceneOriginOffset) {
   const rawTriangles = buffer.readUInt32LE(80);
   const expectedSize = 84 + rawTriangles * 50;
   if (buffer.byteLength !== expectedSize) {
     throw new Error(
-      `Tamanho STL inconsistente para ${fmaId}: lido ${buffer.byteLength} B, esperado ${expectedSize} B (${rawTriangles} tris)`,
+      `Tamanho STL inconsistente para ${stlId}: lido ${buffer.byteLength} B, esperado ${expectedSize} B (${rawTriangles} tris)`,
     );
   }
 
+  const offsetY = sceneOriginOffset[1];
+  const offsetZ = sceneOriginOffset[2];
+  const BIAS = 4_000_000n;
+
   const vertexMap = new Map();
+  // Pré-aloca buffers aproximados (crescem se necessário)
   const positionsList = [];
-  const indicesList = [];
+  const indicesArr = new Uint32Array(rawTriangles * 3);
+  let idxWrite = 0;
   let degenerateTriangles = 0;
 
   const getOrCreateVertex = (gx, gy, gz) => {
     if (!Number.isFinite(gx) || !Number.isFinite(gy) || !Number.isFinite(gz)) {
-      throw new Error(`Coordenada não finita encontrada em ${fmaId}`);
+      throw new Error(`Coordenada não finita encontrada em ${stlId}`);
     }
-    const kx = Math.round(gx * 1e6);
-    const ky = Math.round(gy * 1e6);
-    const kz = Math.round(gz * 1e6);
-    const key = `${kx},${ky},${kz}`;
+    const kx = BigInt(Math.round(gx * 1e6)) + BIAS;
+    const ky = BigInt(Math.round(gy * 1e6)) + BIAS;
+    const kz = BigInt(Math.round(gz * 1e6)) + BIAS;
+    const key = (kx << 46n) | (ky << 23n) | kz;
 
     let idx = vertexMap.get(key);
     if (idx === undefined) {
@@ -193,7 +233,6 @@ function parseAndWeldBinaryStl(buffer, fmaId) {
 
   for (let t = 0; t < rawTriangles; t++) {
     const base = 84 + t * 50;
-    // Ignoramos os 12 bytes da normal de face (base..base+11) e recalculamos pós-simplificação.
     const x0 = buffer.readFloatLE(base + 12);
     const y0 = buffer.readFloatLE(base + 16);
     const z0 = buffer.readFloatLE(base + 20);
@@ -206,24 +245,26 @@ function parseAndWeldBinaryStl(buffer, fmaId) {
     const y2 = buffer.readFloatLE(base + 40);
     const z2 = buffer.readFloatLE(base + 44);
 
-    // Transformação SO(3) comprovada: (x, y, z)_mm -> (x/1000, z/1000, -y/1000)_m (det = +1)
-    const i0 = getOrCreateVertex(x0 / 1000, z0 / 1000, -y0 / 1000);
-    const i1 = getOrCreateVertex(x1 / 1000, z1 / 1000, -y1 / 1000);
-    const i2 = getOrCreateVertex(x2 / 1000, z2 / 1000, -y2 / 1000);
+    // Transformação SO(3) (det = +1) + centralização Y/Z mantendo X=0 sagital mediano
+    const i0 = getOrCreateVertex(x0 / 1000, z0 / 1000 + offsetY, -y0 / 1000 + offsetZ);
+    const i1 = getOrCreateVertex(x1 / 1000, z1 / 1000 + offsetY, -y1 / 1000 + offsetZ);
+    const i2 = getOrCreateVertex(x2 / 1000, z2 / 1000 + offsetY, -y2 / 1000 + offsetZ);
 
     if (i0 === i1 || i1 === i2 || i2 === i0) {
       degenerateTriangles++;
       continue;
     }
 
-    indicesList.push(i0, i1, i2);
+    indicesArr[idxWrite++] = i0;
+    indicesArr[idxWrite++] = i1;
+    indicesArr[idxWrite++] = i2;
   }
 
   return {
     positions: new Float32Array(positionsList),
-    indices: new Uint32Array(indicesList),
+    indices: idxWrite === indicesArr.length ? indicesArr : indicesArr.slice(0, idxWrite),
     rawTriangles,
-    weldedTriangles: indicesList.length / 3,
+    weldedTriangles: idxWrite / 3,
     weldedVertices: positionsList.length / 3,
     degenerateTriangles,
   };
@@ -295,7 +336,6 @@ function computeMeshStats(positions, indices) {
     cy += my * area;
     cz += mz * area;
 
-    // 6 * V_tetraedro = v0 · (v1 × v2)
     const v12x = by * czv - bz * cyv;
     const v12y = bz * cxv - bx * czv;
     const v12z = bx * cyv - by * cxv;
@@ -314,256 +354,6 @@ function computeMeshStats(positions, indices) {
     centroid,
     totalArea,
     signedVolume: signedVolume6 / 6,
-  };
-}
-
-/**
- * Calcula média espacial dos vértices no topo (proximal) e base (distal) de um osso longo
- * para diagnóstico empírico da postura do antebraço (supinação vs semipronação).
- */
-function computeProximalDistalBands(positions, minY, maxY, bandFraction = 0.15) {
-  const span = maxY - minY;
-  const topCutoff = maxY - span * bandFraction;
-  const bottomCutoff = minY + span * bandFraction;
-
-  const prox = [0, 0, 0];
-  let proxCount = 0;
-  const dist = [0, 0, 0];
-  let distCount = 0;
-
-  for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i];
-    const y = positions[i + 1];
-    const z = positions[i + 2];
-
-    if (y >= topCutoff) {
-      prox[0] += x;
-      prox[1] += y;
-      prox[2] += z;
-      proxCount++;
-    }
-    if (y <= bottomCutoff) {
-      dist[0] += x;
-      dist[1] += y;
-      dist[2] += z;
-      distCount++;
-    }
-  }
-
-  return {
-    proximal: proxCount > 0 ? [prox[0] / proxCount, prox[1] / proxCount, prox[2] / proxCount] : [0, 0, 0],
-    distal: distCount > 0 ? [dist[0] / distCount, dist[1] / distCount, dist[2] / distCount] : [0, 0, 0],
-  };
-}
-
-/**
- * Executa o diagnóstico empírico obrigatório de T-02 ANTES da simplificação/exportação.
- * Aborta imediatamente se qualquer malha apresentar inversão de lateralidade no upstream.
- */
-function runEmpiricalDiagnostics(meshesByNodeName) {
-  console.log('\n=== DIAGNÓSTICO EMPÍRICO PRÉ-SIMPLIFICAÇÃO (ALERTAS T-02) ===');
-
-  const lateralityErrors = [];
-  const meshDiagnostics = [];
-
-  console.log('\n[A] Verificação de lateralidade (centroid.x) e winding order das 36 malhas:');
-  console.log(
-    'nodeName'.padEnd(44) +
-      'FMA'.padEnd(10) +
-      'Lado'.padEnd(7) +
-      'cx (m)'.padStart(10) +
-      'cy (m)'.padStart(10) +
-      'cz (m)'.padStart(10) +
-      'tris'.padStart(9) +
-      'vol(cm3)'.padStart(11),
-  );
-
-  for (const structure of ANATOMY_CATALOG) {
-    for (const part of structure.parts) {
-      const entry = meshesByNodeName.get(part.nodeName);
-      const stats = computeMeshStats(entry.positions, entry.indices);
-      entry.rawStats = stats;
-
-      const isRight = structure.laterality === 'right';
-      const isLeft = structure.laterality === 'left';
-      const validLaterality = (isRight && stats.centroid[0] < 0) || (isLeft && stats.centroid[0] > 0);
-
-      if (!validLaterality) {
-        lateralityErrors.push({
-          nodeName: part.nodeName,
-          fmaId: part.fmaId,
-          expectedLaterality: structure.laterality,
-          centroidX: stats.centroid[0],
-        });
-      }
-
-      const volCm3 = stats.signedVolume * 1e6;
-      const highlight =
-        part.fmaId === 'FMA34690' || part.fmaId === 'FMA34691' ? '  <-- ALERTA T-02 (peitoral clavicular)' : '';
-      const statusFlag = validLaterality ? '' : '  [INVERTIDO!]';
-
-      console.log(
-        part.nodeName.padEnd(44) +
-          part.fmaId.padEnd(10) +
-          structure.laterality.padEnd(7) +
-          stats.centroid[0].toFixed(4).padStart(10) +
-          stats.centroid[1].toFixed(4).padStart(10) +
-          stats.centroid[2].toFixed(4).padStart(10) +
-          String(entry.weldedTriangles).padStart(9) +
-          volCm3.toFixed(2).padStart(11) +
-          highlight +
-          statusFlag,
-      );
-
-      meshDiagnostics.push({
-        nodeName: part.nodeName,
-        fmaId: part.fmaId,
-        anatomyId: structure.anatomyId,
-        laterality: structure.laterality,
-        centroid: stats.centroid.map(round6),
-        min: stats.min.map(round6),
-        max: stats.max.map(round6),
-        signedVolumeCm3: round6(volCm3),
-        rawTriangles: entry.rawTriangles,
-        weldedTriangles: entry.weldedTriangles,
-        weldedVertices: entry.weldedVertices,
-      });
-    }
-  }
-
-  if (lateralityErrors.length > 0) {
-    console.error('\n[ERRO CRÍTICO] Inversão de lateralidade detectada no upstream BodyParts3D!');
-    for (const err of lateralityErrors) {
-      console.error(
-        `  - ${err.nodeName} (${err.fmaId}): esperado ${err.expectedLaterality}, mas centroid.x = ${err.centroidX.toFixed(6)} m`,
-      );
-    }
-    throw new Error(
-      `ABORTADO: ${lateralityErrors.length} malha(s) com lateralidade invertida no upstream. Reporte imediatamente ao Coordenador.`,
-    );
-  }
-
-  console.log('\n[OK] Todas as 18 malhas right possuem centroid.x < 0 e todas as 18 left possuem centroid.x > 0.');
-  console.log('[OK] Par crítico FMA34690 (right) / FMA34691 (left) confirmado sem inversão!');
-
-  // Simetria bilateral entre os 18 pares antímeros
-  console.log('\n[A.2] Simetria bilateral dos 18 pares antímeros:');
-  const bilateralSummary = [];
-  for (const structure of ANATOMY_CATALOG) {
-    if (structure.laterality !== 'right') continue;
-    for (const part of structure.parts) {
-      const leftNodeName = part.nodeName.replace('.right', '.left');
-      const rStats = meshesByNodeName.get(part.nodeName).rawStats;
-      const lStats = meshesByNodeName.get(leftNodeName).rawStats;
-      const dxSym = rStats.centroid[0] + lStats.centroid[0];
-      const dyDiff = rStats.centroid[1] - lStats.centroid[1];
-      const dzDiff = rStats.centroid[2] - lStats.centroid[2];
-      bilateralSummary.push({
-        pair: part.nodeName.replace('.right', '.{right,left}'),
-        dxSymMm: round6(dxSym * 1000),
-        dyDiffMm: round6(dyDiff * 1000),
-        dzDiffMm: round6(dzDiff * 1000),
-      });
-    }
-  }
-  for (const sym of bilateralSummary) {
-    console.log(
-      `  ${sym.pair.padEnd(46)} dx(R+L)=${sym.dxSymMm.toFixed(1).padStart(6)}mm  dy(R-L)=${sym.dyDiffMm.toFixed(1).padStart(6)}mm  dz(R-L)=${sym.dzDiffMm.toFixed(1).padStart(6)}mm`,
-    );
-  }
-
-  // [B] Ordenação espacial das sub-partes dos músculos compostos
-  console.log('\n[B] Ordenação espacial das sub-partes de músculos compostos:');
-  const subpartChecks = [];
-
-  for (const side of ['right', 'left']) {
-    // Deltoide: z_clavicular > z_acromial > z_spinal
-    const dClav = meshesByNodeName.get(`muscle.deltoideus.${side}.clavicular`).rawStats;
-    const dAcro = meshesByNodeName.get(`muscle.deltoideus.${side}.acromial`).rawStats;
-    const dSpin = meshesByNodeName.get(`muscle.deltoideus.${side}.spinal`).rawStats;
-    const deltoidOk = dClav.centroid[2] > dAcro.centroid[2] && dAcro.centroid[2] > dSpin.centroid[2];
-    const deltoidMsg = `Deltoide (${side}): z_clav=${dClav.centroid[2].toFixed(4)} > z_acrom=${dAcro.centroid[2].toFixed(4)} > z_spin=${dSpin.centroid[2].toFixed(4)} => ${deltoidOk ? 'OK' : 'ATENÇÃO'}`;
-    console.log(`  ${deltoidMsg}`);
-    subpartChecks.push({ check: `deltoideus.${side}.z_order`, ok: deltoidOk, detail: deltoidMsg });
-
-    // Peitoral maior: y_clavicular > y_sternocostal > y_abdominal
-    const pClav = meshesByNodeName.get(`muscle.pectoralis_major.${side}.clavicular`).rawStats;
-    const pSter = meshesByNodeName.get(`muscle.pectoralis_major.${side}.sternocostal`).rawStats;
-    const pAbdo = meshesByNodeName.get(`muscle.pectoralis_major.${side}.abdominal`).rawStats;
-    const pecOk = pClav.centroid[1] > pSter.centroid[1] && pSter.centroid[1] > pAbdo.centroid[1];
-    const pecMsg = `Peitoral maior (${side}): y_clav=${pClav.centroid[1].toFixed(4)} > y_sternocost=${pSter.centroid[1].toFixed(4)} > y_abdom=${pAbdo.centroid[1].toFixed(4)} => ${pecOk ? 'OK' : 'ATENÇÃO'}`;
-    console.log(`  ${pecMsg}`);
-    subpartChecks.push({ check: `pectoralis_major.${side}.y_order`, ok: pecOk, detail: pecMsg });
-
-    // Bíceps braquial: cabeça longa mais lateral (|x|) e/ou mais alta (maxY) que cabeça curta
-    const bShort = meshesByNodeName.get(`muscle.biceps_brachii.${side}.short_head`).rawStats;
-    const bLong = meshesByNodeName.get(`muscle.biceps_brachii.${side}.long_head`).rawStats;
-    const bicepsLatOk = Math.abs(bLong.centroid[0]) > Math.abs(bShort.centroid[0]);
-    const bicepsMsg = `Bíceps (${side}): |x|_long=${Math.abs(bLong.centroid[0]).toFixed(4)} vs |x|_short=${Math.abs(bShort.centroid[0]).toFixed(4)} | maxY_long=${bLong.max[1].toFixed(4)} vs maxY_short=${bShort.max[1].toFixed(4)} => ${bicepsLatOk ? 'OK (long_head mais lateral)' : 'ATENÇÃO'}`;
-    console.log(`  ${bicepsMsg}`);
-    subpartChecks.push({ check: `biceps_brachii.${side}.lateral_order`, ok: bicepsLatOk, detail: bicepsMsg });
-
-    // Tríceps braquial: maxY_long > maxY_lateral > maxY_medial
-    const tMed = meshesByNodeName.get(`muscle.triceps_brachii.${side}.medial_head`).rawStats;
-    const tLat = meshesByNodeName.get(`muscle.triceps_brachii.${side}.lateral_head`).rawStats;
-    const tLong = meshesByNodeName.get(`muscle.triceps_brachii.${side}.long_head`).rawStats;
-    const tricepsOk = tLong.max[1] > tLat.max[1] && tLat.max[1] > tMed.max[1];
-    const tricepsMsg = `Tríceps (${side}): maxY_long=${tLong.max[1].toFixed(4)} > maxY_lat=${tLat.max[1].toFixed(4)} > maxY_med=${tMed.max[1].toFixed(4)} | |x|_lat=${Math.abs(tLat.centroid[0]).toFixed(4)} > |x|_long=${Math.abs(tLong.centroid[0]).toFixed(4)} => ${tricepsOk ? 'OK' : 'ATENÇÃO'}`;
-    console.log(`  ${tricepsMsg}`);
-    subpartChecks.push({ check: `triceps_brachii.${side}.maxY_order`, ok: tricepsOk, detail: tricepsMsg });
-  }
-
-  // [C] Diagnóstico da posição anatômica do antebraço (rádio vs ulna)
-  console.log('\n[C] Diagnóstico postural do antebraço (Rádio vs Ulna):');
-  const forearmDiagnosis = {};
-  for (const side of ['right', 'left']) {
-    const rad = meshesByNodeName.get(`bone.radius.${side}`);
-    const uln = meshesByNodeName.get(`bone.ulna.${side}`);
-    const radBands = computeProximalDistalBands(rad.positions, rad.rawStats.min[1], rad.rawStats.max[1]);
-    const ulnBands = computeProximalDistalBands(uln.positions, uln.rawStats.min[1], uln.rawStats.max[1]);
-
-    const proxRadAbsX = Math.abs(radBands.proximal[0]);
-    const proxUlnAbsX = Math.abs(ulnBands.proximal[0]);
-    const distRadAbsX = Math.abs(radBands.distal[0]);
-    const distUlnAbsX = Math.abs(ulnBands.distal[0]);
-
-    const distDeltaAbsXMm = (distRadAbsX - distUlnAbsX) * 1000;
-    const distDeltaZMm = (radBands.distal[2] - ulnBands.distal[2]) * 1000;
-
-    let posture = 'indeterminada';
-    if (distDeltaAbsXMm > 10 && Math.abs(distDeltaZMm) < 15) {
-      posture = 'supinação anatômica (rádio lateral à ulna distalmente)';
-    } else if (distDeltaZMm > 10 && Math.abs(distDeltaAbsXMm) <= 15) {
-      posture = 'semipronação / neutra (rádio anterior à ulna distalmente)';
-    } else if (distDeltaAbsXMm < -5) {
-      posture = 'pronação (rádio cruzado medialmente à ulna distalmente)';
-    } else {
-      posture = 'intermediária (supinação parcial / semipronação leve)';
-    }
-
-    console.log(
-      `  Antebraço (${side}):\n` +
-        `    Proximal: Rádio=(${radBands.proximal.map((n) => n.toFixed(4)).join(', ')}) | Ulna=(${ulnBands.proximal.map((n) => n.toFixed(4)).join(', ')})\n` +
-        `    Distal:   Rádio=(${radBands.distal.map((n) => n.toFixed(4)).join(', ')}) | Ulna=(${ulnBands.distal.map((n) => n.toFixed(4)).join(', ')})\n` +
-        `    Delta distal: Δ|x|(R-U)=${distDeltaAbsXMm.toFixed(1)}mm, Δz(R-U)=${distDeltaZMm.toFixed(1)}mm => ${posture}`,
-    );
-
-    forearmDiagnosis[side] = {
-      radiusProximal: radBands.proximal.map(round6),
-      radiusDistal: radBands.distal.map(round6),
-      ulnaProximal: ulnBands.proximal.map(round6),
-      ulnaDistal: ulnBands.distal.map(round6),
-      distalDeltaAbsXMm: round6(distDeltaAbsXMm),
-      distalDeltaZMm: round6(distDeltaZMm),
-      posture,
-    };
-  }
-
-  return {
-    meshDiagnostics,
-    bilateralSummary,
-    subpartChecks,
-    forearmDiagnosis,
   };
 }
 
@@ -596,7 +386,7 @@ function compactIndexedMesh(positions, indices) {
 
 /**
  * Simplifica uma malha individualmente com MeshoptSimplifier preservando acidentes ósseos
- * e contornos musculares. Nunca mistura malhas de anatomyId diferentes.
+ * e contornos musculares. Nunca funde malhas de anatomyId diferentes.
  */
 function simplifySingleMesh(positions, indices, targetTriangles, nodeName) {
   const inputTriangles = indices.length / 3;
@@ -611,17 +401,19 @@ function simplifySingleMesh(positions, indices, targetTriangles, nodeName) {
   }
 
   const targetIndexCount = Math.max(12, Math.floor(targetTriangles) * 3);
-  const acceptableMaxTris = Math.ceil(targetTriangles * 1.05);
+  const acceptableMaxTris = Math.ceil(targetTriangles * 1.08);
 
-  // Tenta primeiro com LockBorder e erros conservadores para evitar perfuração de lâminas finas (ex.: escápula)
+  // Escada conservadora: LockBorder + erro baixo primeiro; só relaxa se a malha exigir (ex.: intercostais 816k -> 1.7k)
   const attempts = [
     { error: 0.005, flags: ['LockBorder'] },
     { error: 0.01, flags: ['LockBorder'] },
-    { error: 0.015, flags: ['LockBorder'] },
-    { error: 0.025, flags: ['LockBorder'] },
-    { error: 0.01, flags: [] },
+    { error: 0.02, flags: ['LockBorder'] },
+    { error: 0.04, flags: ['LockBorder'] },
     { error: 0.02, flags: [] },
-    { error: 0.04, flags: [] },
+    { error: 0.05, flags: [] },
+    { error: 0.1, flags: [] },
+    { error: 0.25, flags: [] },
+    { error: 0.5, flags: [] },
   ];
 
   let bestIndices = indices;
@@ -650,6 +442,23 @@ function simplifySingleMesh(positions, indices, targetTriangles, nodeName) {
     }
   }
 
+  // Fallback sloppy controlado APENAS se a redução normal travou > 2.5x acima do alvo (ex.: malha com dezenas de ilhas desconexas)
+  if (bestIndices.length / 3 > targetTriangles * 2.5) {
+    const [sloppyIndices, sloppyErr] = MeshoptSimplifier.simplifySloppy(
+      indices,
+      positions,
+      3,
+      null,
+      targetIndexCount,
+      0.08,
+    );
+    if (sloppyIndices.length > 0 && sloppyIndices.length < bestIndices.length) {
+      bestIndices = sloppyIndices;
+      bestError = sloppyErr;
+      bestStrategy = 'sloppy(err<=0.08)';
+    }
+  }
+
   const compacted = compactIndexedMesh(positions, bestIndices);
   if (compacted.indices.length === 0) {
     throw new Error(`Simplificação produziu malha vazia para ${nodeName}`);
@@ -664,8 +473,7 @@ function simplifySingleMesh(positions, indices, targetTriangles, nodeName) {
 }
 
 /**
- * Recalcula normais suaves ponderadas pela área de cada face (cross(e1, e2) sem normalizar
- * tem norma igual a 2 * área).
+ * Recalcula normais suaves ponderadas pela área de cada face.
  */
 function computeAreaWeightedNormals(positions, indices) {
   const normals = new Float32Array(positions.length);
@@ -717,8 +525,7 @@ function computeAreaWeightedNormals(positions, indices) {
 }
 
 /**
- * Calcula boundingBox combinada e labelAnchor determinístico (vértice real da superfície externa)
- * usando os parâmetros anatômicos calibrados em T-02.
+ * Calcula boundingBox combinada e labelAnchor determinístico (vértice real da superfície externa).
  */
 function computeStructureAnchorAndBox(structure, simplifiedParts) {
   const min = [Infinity, Infinity, Infinity];
@@ -743,8 +550,7 @@ function computeStructureAnchorAndBox(structure, simplifiedParts) {
   const size = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
   const dir = normalizeVec3(structure.anchorDirection);
 
-  const P = [center[0], center[1] + structure.yBias * size[1], center[2]];
-  // Half-extent real da AABB ao longo da direção unitária `dir` (garante simetria exata entre dir.x < 0 e dir.x > 0)
+  const P = [center[0], center[1] + (structure.yBias ?? 0) * size[1], center[2]];
   const halfExtent =
     0.5 * (Math.abs(size[0] * dir[0]) + Math.abs(size[1] * dir[1]) + Math.abs(size[2] * dir[2]));
   const G = [P[0] + dir[0] * halfExtent, P[1] + dir[1] * halfExtent, P[2] + dir[2] * halfExtent];
@@ -797,12 +603,185 @@ function computeStructureAnchorAndBox(structure, simplifiedParts) {
 }
 
 /**
+ * Executa o diagnóstico empírico de lateralidade (right < 0, left > 0, midline |x| < 6cm),
+ * casos críticos (subclavius, trapezoideum, flexor_pollicis_brevis, tendo_calcaneus, digastricus, BP44..47)
+ * e simetria bilateral. Aborta imediatamente se qualquer malha violar a lateralidade.
+ */
+function runEmpiricalDiagnostics(catalog, statsByNodeName) {
+  console.log('\n=== DIAGNÓSTICO EMPÍRICO DE LATERALIDADE E SIMETRIA ===');
+
+  const lateralityErrors = [];
+  const criticalNodes = new Set([
+    'muscle.subclavius.right',
+    'muscle.subclavius.left',
+    'bone.os_trapezoideum.right',
+    'bone.os_trapezoideum.left',
+    'muscle.flexor_pollicis_brevis.right.superficial_head',
+    'muscle.flexor_pollicis_brevis.right.deep_head',
+    'muscle.flexor_pollicis_brevis.left.superficial_head',
+    'muscle.flexor_pollicis_brevis.left.deep_head',
+    'muscle.tendo_calcaneus.right',
+    'muscle.tendo_calcaneus.left',
+    'muscle.digastricus.right.anterior_belly',
+    'muscle.digastricus.right.posterior_belly',
+    'muscle.digastricus.right.intermediate_tendon',
+    'muscle.digastricus.left.anterior_belly',
+    'muscle.digastricus.left.posterior_belly',
+    'muscle.digastricus.left.intermediate_tendon',
+    'muscle.extensor_carpi_ulnaris.right.humeral_head',
+    'muscle.extensor_carpi_ulnaris.right.ulnar_head',
+    'muscle.extensor_carpi_ulnaris.left.humeral_head',
+    'muscle.extensor_carpi_ulnaris.left.ulnar_head',
+    'muscle.pectoralis_major.right.clavicular',
+    'muscle.pectoralis_major.left.clavicular',
+    'bone.os_sesamoideum_pedis.right',
+    'bone.os_sesamoideum_pedis.left',
+  ]);
+
+  let rightCount = 0;
+  let leftCount = 0;
+  let midlineCount = 0;
+  let negativeVolCount = 0;
+  const criticalReport = [];
+  const meshDiagnostics = [];
+
+  for (const structure of catalog) {
+    for (const part of structure.parts) {
+      const rec = statsByNodeName.get(part.nodeName);
+      const { centroid, min, max, signedVolume } = rec.rawStats;
+      const stlId = part.stlId ?? part.fmaId;
+
+      let validLaterality = false;
+      if (structure.laterality === 'right') {
+        rightCount++;
+        validLaterality = centroid[0] < 0;
+      } else if (structure.laterality === 'left') {
+        leftCount++;
+        validLaterality = centroid[0] > 0;
+      } else {
+        midlineCount++;
+        validLaterality = Math.abs(centroid[0]) < MIDLINE_MAX_ABS_X_METERS;
+      }
+
+      if (signedVolume < 0) negativeVolCount++;
+
+      if (!validLaterality) {
+        lateralityErrors.push({
+          nodeName: part.nodeName,
+          stlId,
+          fmaId: part.fmaId,
+          expectedLaterality: structure.laterality,
+          centroidX: round6(centroid[0]),
+        });
+      }
+
+      const diagEntry = {
+        nodeName: part.nodeName,
+        stlId,
+        fmaId: part.fmaId,
+        anatomyId: structure.anatomyId,
+        laterality: structure.laterality,
+        centroid: centroid.map(round6),
+        min: min.map(round6),
+        max: max.map(round6),
+        signedVolumeCm3: round6(signedVolume * 1e6),
+        rawTriangles: rec.rawTriangles,
+      };
+      meshDiagnostics.push(diagEntry);
+
+      if (criticalNodes.has(part.nodeName)) {
+        criticalReport.push(diagEntry);
+      }
+    }
+  }
+
+  console.log('\n[A] Casos críticos auditados (subclavius, trapezoideum, flexor_pollicis_brevis, tendo_calcaneus, digastricus, BP44..47, sesamoides):');
+  for (const c of criticalReport) {
+    const idLabel = c.stlId !== c.fmaId ? `${c.stlId}->${c.fmaId}` : c.fmaId;
+    console.log(
+      `  ${c.nodeName.padEnd(52)} ${idLabel.padEnd(16)} ${c.laterality.padEnd(7)} cx=${c.centroid[0].toFixed(4).padStart(8)} cy=${c.centroid[1].toFixed(4).padStart(8)} cz=${c.centroid[2].toFixed(4).padStart(8)}`,
+    );
+  }
+
+  if (lateralityErrors.length > 0) {
+    console.error('\n[ERRO CRÍTICO] Violação de lateralidade detectada no upstream BodyParts3D!');
+    for (const err of lateralityErrors) {
+      console.error(
+        `  - ${err.nodeName} (stl=${err.stlId}, fma=${err.fmaId}): esperado ${err.expectedLaterality}, mas centroid.x = ${err.centroidX} m`,
+      );
+    }
+    throw new Error(
+      `ABORTADO: ${lateralityErrors.length} malha(s) com lateralidade violada no upstream. Reporte imediatamente ao Coordenador.`,
+    );
+  }
+
+  console.log(
+    `\n[OK] Lateralidade 100% válida: ${rightCount} right (cx<0), ${leftCount} left (cx>0), ${midlineCount} midline (|cx|<${(MIDLINE_MAX_ABS_X_METERS * 100).toFixed(0)}cm). Volumes assinados negativos: ${negativeVolCount}.`,
+  );
+
+  // Simetria bilateral entre todos os pares antímeros (right <-> left)
+  const bilateralWarnings = [];
+  let pairsChecked = 0;
+  let worstPair = { pair: 'none', maxErrMm: 0, dxSymMm: 0, dyDiffMm: 0, dzDiffMm: 0 };
+
+  for (const structure of catalog) {
+    if (structure.laterality !== 'right') continue;
+    for (const part of structure.parts) {
+      const leftNodeName = part.nodeName.replace('.right', '.left');
+      const rRec = statsByNodeName.get(part.nodeName);
+      const lRec = statsByNodeName.get(leftNodeName);
+      if (!rRec || !lRec) continue;
+
+      pairsChecked++;
+      const dxSym = rRec.rawStats.centroid[0] + lRec.rawStats.centroid[0];
+      const dyDiff = rRec.rawStats.centroid[1] - lRec.rawStats.centroid[1];
+      const dzDiff = rRec.rawStats.centroid[2] - lRec.rawStats.centroid[2];
+      const maxErr = Math.max(Math.abs(dxSym), Math.abs(dyDiff), Math.abs(dzDiff));
+      const maxErrMm = round6(maxErr * 1000);
+
+      const pairInfo = {
+        pair: part.nodeName.replace('.right', '.{right,left}'),
+        maxErrMm,
+        dxSymMm: round6(dxSym * 1000),
+        dyDiffMm: round6(dyDiff * 1000),
+        dzDiffMm: round6(dzDiff * 1000),
+      };
+
+      if (maxErrMm > worstPair.maxErrMm) {
+        worstPair = pairInfo;
+      }
+      if (maxErr > BILATERAL_WARN_METERS) {
+        bilateralWarnings.push(pairInfo);
+      }
+    }
+  }
+
+  console.log(
+    `[OK] Simetria bilateral verificada em ${pairsChecked} pares antímeros: pior desvio = ${worstPair.maxErrMm.toFixed(2)} mm (${worstPair.pair}: dx=${worstPair.dxSymMm.toFixed(1)}mm, dy=${worstPair.dyDiffMm.toFixed(1)}mm, dz=${worstPair.dzDiffMm.toFixed(1)}mm).`,
+  );
+  if (bilateralWarnings.length > 0) {
+    console.warn(`[AVISO] ${bilateralWarnings.length} par(es) acima de ${(BILATERAL_WARN_METERS * 1000).toFixed(0)} mm:`);
+    for (const w of bilateralWarnings) {
+      console.warn(`  - ${w.pair}: max=${w.maxErrMm.toFixed(1)}mm (dx=${w.dxSymMm}mm, dy=${w.dyDiffMm}mm, dz=${w.dzDiffMm}mm)`);
+    }
+  }
+
+  return {
+    counts: { rightCount, leftCount, midlineCount, pairsChecked, negativeVolCount },
+    worstBilateralPair: worstPair,
+    bilateralWarnings,
+    criticalReport,
+    meshDiagnostics,
+  };
+}
+
+/**
  * Constrói e comprime um arquivo .glb para um sistema ('skeletal' ou 'muscular')
  * mantendo a hierarquia exata HumanBody > skeletal-system/muscular-system > meshNodes.
  */
-async function buildSystemGlb(system, partsData) {
+async function buildSystemGlb(system, partsData, assetVersion) {
   const doc = new Document();
-  doc.getRoot().getAsset().generator = 'Anatomia 3D Asset Pipeline v1 (@gltf-transform + meshoptimizer)';
+  doc.getRoot().getAsset().generator = `Anatomia 3D Asset Pipeline ${assetVersion} (@gltf-transform + meshoptimizer)`;
 
   const buffer = doc.createBuffer();
   const scene = doc.createScene('Scene');
@@ -813,7 +792,6 @@ async function buildSystemGlb(system, partsData) {
   rootNode.addChild(systemNode);
   scene.addChild(rootNode);
 
-  // Material PBR base anatomicamente neutro (clonado/gerenciado por estrutura em runtime no AnatomyEngine)
   const baseMaterial =
     system === 'skeletal'
       ? doc
@@ -875,7 +853,6 @@ async function buildSystemGlb(system, partsData) {
     totalTriangles += item.indices.length / 3;
   }
 
-  // Aplica reorder + quantize (KHR_mesh_quantization) + EXTMeshoptCompression (modo FILTER / high)
   await doc.transform(
     meshopt({
       encoder: MeshoptEncoder,
@@ -905,143 +882,149 @@ async function buildSystemGlb(system, partsData) {
 
 async function main() {
   const startedAt = Date.now();
-  console.log('=== ANATOMIA 3D — BUILD DE ATIVOS 3D (BodyParts3D v3.0 -> glTF 2.0 Meshopt) ===');
+  const targetVersion = parseVersionArg();
+  const catalogMod = await loadCatalogForVersion(targetVersion);
+
+  const {
+    ANATOMY_CATALOG,
+    ASSET_VERSION,
+    BODYPARTS3D_BASE_URL,
+    COORDINATE_SYSTEM,
+    COVERAGE_MATRIX_VERSION,
+    DETAIL_LEVEL,
+    LICENSE_INFO,
+    METADATA_VERSION,
+    SCHEMA_VERSION,
+    SCOPE_STATEMENT,
+    TERMINOLOGY_REFERENCE,
+    listAllCatalogParts,
+  } = catalogMod;
+
+  const OUTPUT_DIR = path.join(ROOT_DIR, 'public', 'assets', ASSET_VERSION);
+
+  console.log(
+    `=== ANATOMIA 3D — BUILD DE ATIVOS 3D [${ASSET_VERSION}] (BodyParts3D v3.0 -> glTF 2.0 Meshopt) ===`,
+  );
 
   await Promise.all([MeshoptEncoder.ready, MeshoptSimplifier.ready]);
   await fs.mkdir(CACHE_DIR, { recursive: true });
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
 
   const allParts = listAllCatalogParts();
-  console.log(`Catálogo carregado: ${ANATOMY_CATALOG.length} estruturas, ${allParts.length} malhas STL.`);
-
-  // 1. Download e cache dos 36 STLs brutos
-  console.log('\n[1/6] Baixando/verificando 36 STLs em .cache/bodyparts3d/ ...');
-  const downloadedList = await mapWithConcurrency(allParts, DOWNLOAD_CONCURRENCY, async (part) => {
-    const result = await fetchStlWithCache(part);
-    if (result.bytes !== part.expectedBytes) {
-      console.warn(
-        `  [AVISO] Tamanho divergente para ${part.fmaId}: esperado ${part.expectedBytes} B, recebido ${result.bytes} B`,
-      );
-    }
-    return { part, ...result };
-  });
-
-  const cachedCount = downloadedList.filter((d) => d.fromCache).length;
-  const rawTotalBytes = downloadedList.reduce((acc, d) => acc + d.bytes, 0);
   console.log(
-    `  36 STLs prontos (${cachedCount} do cache, ${downloadedList.length - cachedCount} baixados) — ${(rawTotalBytes / 1024 / 1024).toFixed(2)} MiB brutos.`,
+    `Catálogo ${ASSET_VERSION} carregado: ${ANATOMY_CATALOG.length} estruturas, ${allParts.length} malhas STL.`,
   );
 
-  // 2. Parsing binário STL + conversão SO(3) + soldagem de vértices
-  console.log('\n[2/6] Parsing STL binário, conversão SO(3) (m) e soldagem de vértices...');
-  const meshesByNodeName = new Map();
-  const stlHashesRecord = [];
+  // -------------------------------------------------------------------------
+  // [1/6] Download/cache dos STLs + cálculo streaming de SHA-256 e BBox global
+  // -------------------------------------------------------------------------
+  console.log(`\n[1/6] Baixando/verificando ${allParts.length} STLs em .cache/bodyparts3d/ ...`);
+  let doneDownloads = 0;
+  const inspectedList = await mapWithConcurrency(allParts, DOWNLOAD_CONCURRENCY, async (part) => {
+    const res = await ensureStlCachedAndInspect(part, BODYPARTS3D_BASE_URL);
+    doneDownloads++;
+    if (allParts.length > 50 && (doneDownloads % 100 === 0 || doneDownloads === allParts.length)) {
+      console.log(`  Progresso STL: ${doneDownloads}/${allParts.length}`);
+    }
+    if (part.expectedBytes && res.bytes !== part.expectedBytes) {
+      console.warn(
+        `  [AVISO] Tamanho divergente para ${res.stlId}: esperado ${part.expectedBytes} B, recebido ${res.bytes} B`,
+      );
+    }
+    return { part, ...res };
+  });
+
+  const cachedCount = inspectedList.filter((d) => d.fromCache).length;
+  const rawTotalBytes = inspectedList.reduce((acc, d) => acc + d.bytes, 0);
+  const totalRawTriangles = inspectedList.reduce((acc, d) => acc + d.rawTriangles, 0);
+  console.log(
+    `  ${allParts.length} STLs prontos (${cachedCount} do cache, ${inspectedList.length - cachedCount} baixados) — ${(rawTotalBytes / 1024 / 1024).toFixed(2)} MiB brutos (${totalRawTriangles.toLocaleString('en-US')} triângulos brutos).`,
+  );
 
   const globalMin = [Infinity, Infinity, Infinity];
   const globalMax = [-Infinity, -Infinity, -Infinity];
-  let totalRawTriangles = 0;
+  const inspectedByNodeName = new Map();
+  const stlHashesRecord = [];
 
-  for (const item of downloadedList) {
-    const parsed = parseAndWeldBinaryStl(item.buffer, item.part.fmaId);
-    totalRawTriangles += parsed.rawTriangles;
-
-    for (let i = 0; i < parsed.positions.length; i += 3) {
-      const x = parsed.positions[i];
-      const y = parsed.positions[i + 1];
-      const z = parsed.positions[i + 2];
-      if (x < globalMin[0]) globalMin[0] = x;
-      if (y < globalMin[1]) globalMin[1] = y;
-      if (z < globalMin[2]) globalMin[2] = z;
-      if (x > globalMax[0]) globalMax[0] = x;
-      if (y > globalMax[1]) globalMax[1] = y;
-      if (z > globalMax[2]) globalMax[2] = z;
+  for (const item of inspectedList) {
+    inspectedByNodeName.set(item.part.nodeName, item);
+    for (let a = 0; a < 3; a++) {
+      if (item.min[a] < globalMin[a]) globalMin[a] = item.min[a];
+      if (item.max[a] > globalMax[a]) globalMax[a] = item.max[a];
     }
-
-    meshesByNodeName.set(item.part.nodeName, {
-      ...item.part,
-      ...parsed,
-      stlSha256: item.sha256,
-      stlBytes: item.bytes,
-    });
-
     stlHashesRecord.push({
-      system: item.part.system,
+      stlId: item.stlId,
       fmaId: item.part.fmaId,
-      nodeName: item.part.nodeName,
       anatomyId: item.part.anatomyId,
+      nodeName: item.part.nodeName,
+      system: item.part.system,
+      region: item.part.region ?? 'upper_limb',
       bytes: item.bytes,
-      expectedBytes: item.part.expectedBytes,
-      rawTriangles: parsed.rawTriangles,
+      rawTriangles: item.rawTriangles,
       sha256: item.sha256,
     });
   }
 
-  // 3. Centralização global apenas em Y e Z (X = 0 preservado no plano sagital mediano)
+  // Centralização global apenas em Y e Z (X = 0 preservado no plano sagital mediano)
   const centerY = (globalMin[1] + globalMax[1]) / 2;
   const centerZ = (globalMin[2] + globalMax[2]) / 2;
   const sceneOriginOffset = [0, round6(-centerY), round6(-centerZ)];
 
-  for (const mesh of meshesByNodeName.values()) {
-    const pos = mesh.positions;
-    for (let i = 0; i < pos.length; i += 3) {
-      pos[i + 1] += sceneOriginOffset[1];
-      pos[i + 2] += sceneOriginOffset[2];
-    }
-  }
-
   console.log(
     `  BBox global pré-centralização (m): min=[${globalMin.map(round6).join(', ')}], max=[${globalMax.map(round6).join(', ')}]`,
   );
-  console.log(`  sceneOriginOffset aplicado: [${sceneOriginOffset.join(', ')}] (X=0 sagital mediano preservado)`);
-  console.log(`  Total bruto de triângulos (36 STLs): ${totalRawTriangles.toLocaleString('en-US')}`);
-
-  // 4. Diagnóstico empírico obrigatório de T-02 (aborta se houver inversão no upstream)
-  const diagnostics = runEmpiricalDiagnostics(meshesByNodeName);
-
-  // 5. Simplificação controlada + normais ponderadas por área + cálculo de âncoras
-  console.log('\n[3/6] Simplificando individualmente as 36 malhas com MeshoptSimplifier...');
   console.log(
-    'nodeName'.padEnd(44) +
-      'rawTris'.padStart(9) +
-      'target'.padStart(8) +
-      'final'.padStart(8) +
-      'verts'.padStart(8) +
-      'err'.padStart(9) +
-      'volΔ%'.padStart(8) +
-      '  estratégia',
+    `  sceneOriginOffset aplicado: [${sceneOriginOffset.join(', ')}] (X=0 sagital mediano preservado)`,
   );
 
+  // -------------------------------------------------------------------------
+  // [2/6] Streaming por malha: parse SO(3) + weld + rawStats + simplify + normals
+  // -------------------------------------------------------------------------
+  console.log(
+    `\n[2/6] Processando, soldando e simplificando individualmente as ${allParts.length} malhas (streaming de baixa RAM)...`,
+  );
+
+  const statsByNodeName = new Map();
+  const finalizedByNodeName = new Map();
   const skeletalPartsData = [];
   const muscularPartsData = [];
   const simplificationReport = [];
+  let processedCount = 0;
 
   for (const structure of ANATOMY_CATALOG) {
     for (const part of structure.parts) {
-      const entry = meshesByNodeName.get(part.nodeName);
-      const simplified = simplifySingleMesh(entry.positions, entry.indices, part.targetTriangles, part.nodeName);
+      const inspected = inspectedByNodeName.get(part.nodeName);
+      const buffer = await fs.readFile(inspected.cachePath);
+      const parsed = parseTransformAndWeldBinaryStl(buffer, inspected.stlId, sceneOriginOffset);
+      const rawStats = computeMeshStats(parsed.positions, parsed.indices);
+
+      statsByNodeName.set(part.nodeName, {
+        rawStats,
+        rawTriangles: parsed.rawTriangles,
+        weldedTriangles: parsed.weldedTriangles,
+        weldedVertices: parsed.weldedVertices,
+      });
+
+      const simplified = simplifySingleMesh(
+        parsed.positions,
+        parsed.indices,
+        part.targetTriangles,
+        part.nodeName,
+      );
       const normals = computeAreaWeightedNormals(simplified.positions, simplified.indices);
       const postStats = computeMeshStats(simplified.positions, simplified.indices);
 
-      const rawVol = entry.rawStats.signedVolume;
+      const rawVol = rawStats.signedVolume;
       const postVol = postStats.signedVolume;
-      const volDeltaPct = Math.abs(rawVol) > 1e-12 ? ((postVol - rawVol) / Math.abs(rawVol)) * 100 : 0;
+      const volDeltaPct =
+        Math.abs(rawVol) > 1e-12 ? ((postVol - rawVol) / Math.abs(rawVol)) * 100 : 0;
 
       const finalTris = simplified.indices.length / 3;
       const finalVerts = simplified.positions.length / 3;
 
-      console.log(
-        part.nodeName.padEnd(44) +
-          String(entry.rawTriangles).padStart(9) +
-          String(part.targetTriangles).padStart(8) +
-          String(finalTris).padStart(8) +
-          String(finalVerts).padStart(8) +
-          simplified.resultError.toFixed(5).padStart(9) +
-          volDeltaPct.toFixed(2).padStart(8) +
-          `  ${simplified.strategy}`,
-      );
-
       const finalizedPart = {
         nodeName: part.nodeName,
+        stlId: inspected.stlId,
         fmaId: part.fmaId,
         anatomyId: structure.anatomyId,
         system: structure.system,
@@ -1050,12 +1033,19 @@ async function main() {
         indices: simplified.indices,
       };
 
-      entry.finalized = finalizedPart;
+      finalizedByNodeName.set(part.nodeName, finalizedPart);
+      if (structure.system === 'skeletal') {
+        skeletalPartsData.push(finalizedPart);
+      } else {
+        muscularPartsData.push(finalizedPart);
+      }
+
       simplificationReport.push({
         nodeName: part.nodeName,
+        stlId: inspected.stlId,
         fmaId: part.fmaId,
         system: structure.system,
-        rawTriangles: entry.rawTriangles,
+        rawTriangles: parsed.rawTriangles,
         targetTriangles: part.targetTriangles,
         finalTriangles: finalTris,
         finalVertices: finalVerts,
@@ -1064,31 +1054,57 @@ async function main() {
         strategy: simplified.strategy,
       });
 
-      if (structure.system === 'skeletal') {
-        skeletalPartsData.push(finalizedPart);
-      } else {
-        muscularPartsData.push(finalizedPart);
+      processedCount++;
+      if (allParts.length > 50 && (processedCount % 100 === 0 || processedCount === allParts.length)) {
+        console.log(`  Simplificação concluída: ${processedCount}/${allParts.length} malhas`);
       }
     }
   }
 
-  // 6. Construção dos metadados determinísticos (labelAnchor, boundingBox, focusDirection)
-  console.log('\n[4/6] Calculando labelAnchor determinístico e boundingBox para as 22 estruturas...');
+  // Relatório resumido de simplificação (destaca malhas que precisaram de erro > 0.01 ou sloppy)
+  const nonConservative = simplificationReport.filter(
+    (r) => !r.strategy.startsWith('err<=0.005') && r.strategy !== 'passthrough',
+  );
+  const maxErrItem = simplificationReport.reduce(
+    (best, cur) => (cur.resultError > best.resultError ? cur : best),
+    simplificationReport[0],
+  );
+  console.log(
+    `  Simplificação finalizada: ${simplificationReport.length} malhas | maior erro relativo = ${maxErrItem.resultError} (${maxErrItem.nodeName}, ${maxErrItem.strategy}) | malhas com estratégia > 0.005: ${nonConservative.length}`,
+  );
+  for (const nc of nonConservative.slice(0, 15)) {
+    console.log(
+      `    • ${nc.nodeName.padEnd(46)} ${String(nc.rawTriangles).padStart(7)} -> ${String(nc.finalTriangles).padStart(5)} (alvo ${nc.targetTriangles}) err=${nc.resultError} ${nc.strategy}`,
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // [3/6] Diagnóstico empírico de lateralidade e simetria (aborta se violado)
+  // -------------------------------------------------------------------------
+  const diagnostics = runEmpiricalDiagnostics(ANATOMY_CATALOG, statsByNodeName);
+
+  // -------------------------------------------------------------------------
+  // [4/6] Cálculo determinístico de labelAnchor, boundingBox e focusDirection
+  // -------------------------------------------------------------------------
+  console.log(
+    `\n[4/6] Calculando labelAnchor determinístico e boundingBox para as ${ANATOMY_CATALOG.length} estruturas...`,
+  );
   const generatedAt = new Date().toISOString();
   const metadataStructures = [];
   const coverageStructures = [];
+  let fallbackAnchorCount = 0;
 
   for (const structure of ANATOMY_CATALOG) {
-    const finalizedParts = structure.parts.map((p) => meshesByNodeName.get(p.nodeName).finalized);
-    const { labelAnchor, boundingBox, usedNormalFilter } = computeStructureAnchorAndBox(structure, finalizedParts);
+    const finalizedParts = structure.parts.map((p) => finalizedByNodeName.get(p.nodeName));
+    const { labelAnchor, boundingBox, usedNormalFilter } = computeStructureAnchorAndBox(
+      structure,
+      finalizedParts,
+    );
+    if (!usedNormalFilter) fallbackAnchorCount++;
     const focusDirection = normalizeVec3(structure.focusDirection).map(round6);
 
     const meshNodes = structure.parts.map((p) => p.nodeName);
-    const fmaIds = structure.parts.map((p) => p.fmaId);
-
-    console.log(
-      `  ${structure.anatomyId.padEnd(32)} anchor=[${labelAnchor.map((v) => v.toFixed(4)).join(', ')}]${usedNormalFilter ? '' : ' (fallback)'}`,
-    );
+    const fmaIds = structure.structureFmaIds ?? [...new Set(structure.parts.map((p) => p.fmaId))];
 
     metadataStructures.push({
       anatomyId: structure.anatomyId,
@@ -1117,6 +1133,7 @@ async function main() {
       anatomyId: structure.anatomyId,
       system: structure.system,
       laterality: structure.laterality,
+      region: structure.region,
       presentInAsset: true,
       detailLevel: DETAIL_LEVEL,
       meshNodes,
@@ -1124,11 +1141,18 @@ async function main() {
       reviewStatus: 'pending_review',
     });
   }
+  console.log(
+    `  ${metadataStructures.length} âncoras calculadas (${metadataStructures.length - fallbackAnchorCount} com filtro de normal > 0.25, ${fallbackAnchorCount} fallback).`,
+  );
 
-  // 7. Exportação e compressão Meshopt dos 2 .glb
-  console.log('\n[5/6] Gerando e comprimindo skeletal-v1.glb e muscular-v1.glb (KHR_mesh_quantization + EXT_meshopt_compression)...');
-  const skeletalGlb = await buildSystemGlb('skeletal', skeletalPartsData);
-  const muscularGlb = await buildSystemGlb('muscular', muscularPartsData);
+  // -------------------------------------------------------------------------
+  // [5/6] Exportação e compressão Meshopt dos 2 .glb
+  // -------------------------------------------------------------------------
+  console.log(
+    `\n[5/6] Gerando e comprimindo skeletal-${ASSET_VERSION}.glb e muscular-${ASSET_VERSION}.glb (KHR_mesh_quantization + EXT_meshopt_compression)...`,
+  );
+  const skeletalGlb = await buildSystemGlb('skeletal', skeletalPartsData, ASSET_VERSION);
+  const muscularGlb = await buildSystemGlb('muscular', muscularPartsData, ASSET_VERSION);
 
   const totalGlbBytes = skeletalGlb.bytes + muscularGlb.bytes;
   const totalFinalTriangles = skeletalGlb.triangles + muscularGlb.triangles;
@@ -1179,8 +1203,10 @@ async function main() {
     license: LICENSE_INFO,
   };
 
-  // 8. Emissão atômica em public/assets/v1/ e relatórios em .cache/bodyparts3d/
-  console.log('\n[6/6] Gravando unidade de lançamento atomicamente em public/assets/v1/ ...');
+  // -------------------------------------------------------------------------
+  // [6/6] Emissão atômica em public/assets/<version>/ + proveniência
+  // -------------------------------------------------------------------------
+  console.log(`\n[6/6] Gravando unidade de lançamento atomicamente em public/assets/${ASSET_VERSION}/ ...`);
   await writeFileAtomic(path.join(OUTPUT_DIR, `skeletal-${ASSET_VERSION}.glb`), skeletalGlb.buffer);
   await writeFileAtomic(path.join(OUTPUT_DIR, `muscular-${ASSET_VERSION}.glb`), muscularGlb.buffer);
   await writeFileAtomic(
@@ -1191,14 +1217,22 @@ async function main() {
     path.join(OUTPUT_DIR, 'coverage-matrix.json'),
     `${JSON.stringify(coverageMatrixDoc, null, 2)}\n`,
   );
-  await writeFileAtomic(path.join(OUTPUT_DIR, 'manifest.json'), `${JSON.stringify(manifestDoc, null, 2)}\n`);
-
-  // Artefatos de auditoria no cache (fora do Git)
-  await writeFileAtomic(path.join(CACHE_DIR, 'stl-hashes.json'), `${JSON.stringify(stlHashesRecord, null, 2)}\n`);
   await writeFileAtomic(
-    path.join(CACHE_DIR, 'build-report.json'),
+    path.join(OUTPUT_DIR, 'manifest.json'),
+    `${JSON.stringify(manifestDoc, null, 2)}\n`,
+  );
+
+  // Relatórios de auditoria no cache (fora do Git)
+  const sortedHashes = [...stlHashesRecord].sort((a, b) => a.stlId.localeCompare(b.stlId));
+  await writeFileAtomic(
+    path.join(CACHE_DIR, `stl-hashes-${ASSET_VERSION}.json`),
+    `${JSON.stringify(sortedHashes, null, 2)}\n`,
+  );
+  await writeFileAtomic(
+    path.join(CACHE_DIR, `build-report-${ASSET_VERSION}.json`),
     `${JSON.stringify(
       {
+        assetVersion: ASSET_VERSION,
         generatedAt,
         sceneOriginOffset,
         rawTotalBytes,
@@ -1227,19 +1261,57 @@ async function main() {
     )}\n`,
   );
 
+  // Para v2, emite também docs/proveniencia-v2-hashes.json conforme contrato Fase 2
+  if (ASSET_VERSION === 'v2') {
+    const provenancePath = path.join(ROOT_DIR, 'docs', 'proveniencia-v2-hashes.json');
+    const provenanceDoc = {
+      schemaVersion: SCHEMA_VERSION,
+      assetVersion: ASSET_VERSION,
+      generatedAt,
+      sourceRepository: 'https://github.com/Kevin-Mattheus-Moerman/BodyParts3D (main, BodyParts3D v3.0)',
+      license: LICENSE_INFO,
+      coordinateSystem: COORDINATE_SYSTEM,
+      sceneOriginOffset,
+      outputs: {
+        skeletal: {
+          file: `public/assets/${ASSET_VERSION}/skeletal-${ASSET_VERSION}.glb`,
+          sha256: skeletalGlb.sha256,
+          bytes: skeletalGlb.bytes,
+          triangles: skeletalGlb.triangles,
+          meshCount: skeletalGlb.meshCount,
+        },
+        muscular: {
+          file: `public/assets/${ASSET_VERSION}/muscular-${ASSET_VERSION}.glb`,
+          sha256: muscularGlb.sha256,
+          bytes: muscularGlb.bytes,
+          triangles: muscularGlb.triangles,
+          meshCount: muscularGlb.meshCount,
+        },
+        totals: {
+          bytes: totalGlbBytes,
+          triangles: totalFinalTriangles,
+          structureCount: ANATOMY_CATALOG.length,
+          stlCount: sortedHashes.length,
+        },
+      },
+      sourceStls: sortedHashes,
+    };
+    await writeFileAtomic(provenancePath, `${JSON.stringify(provenanceDoc, null, 2)}\n`);
+    console.log(`  Proveniência SHA-256 gravada em: docs/proveniencia-v2-hashes.json (${sortedHashes.length} STLs + 2 GLBs)`);
+  }
+
   const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(2);
-  console.log('\n=== RESUMO DO BUILD ===');
+  console.log(`\n=== RESUMO DO BUILD [${ASSET_VERSION}] ===`);
   console.log(
-    `  skeletal-v1.glb : ${(skeletalGlb.bytes / 1024).toFixed(1)} KB (${skeletalGlb.bytes} B) | ${skeletalGlb.triangles.toLocaleString('en-US')} tris | ${skeletalGlb.meshCount} malhas | sha256=${skeletalGlb.sha256.slice(0, 16)}...`,
+    `  skeletal-${ASSET_VERSION}.glb : ${(skeletalGlb.bytes / 1024 / 1024).toFixed(2)} MB (${skeletalGlb.bytes.toLocaleString('en-US')} B) | ${skeletalGlb.triangles.toLocaleString('en-US')} tris | ${skeletalGlb.meshCount} malhas | sha256=${skeletalGlb.sha256}`,
   );
   console.log(
-    `  muscular-v1.glb : ${(muscularGlb.bytes / 1024).toFixed(1)} KB (${muscularGlb.bytes} B) | ${muscularGlb.triangles.toLocaleString('en-US')} tris | ${muscularGlb.meshCount} malhas | sha256=${muscularGlb.sha256.slice(0, 16)}...`,
+    `  muscular-${ASSET_VERSION}.glb : ${(muscularGlb.bytes / 1024 / 1024).toFixed(2)} MB (${muscularGlb.bytes.toLocaleString('en-US')} B) | ${muscularGlb.triangles.toLocaleString('en-US')} tris | ${muscularGlb.meshCount} malhas | sha256=${muscularGlb.sha256}`,
   );
   console.log(
-    `  TOTAL .glb      : ${(totalGlbBytes / 1024 / 1024).toFixed(2)} MB (${totalGlbBytes.toLocaleString('en-US')} B) | ${totalFinalTriangles.toLocaleString('en-US')} tris (redução de ${((1 - totalFinalTriangles / totalRawTriangles) * 100).toFixed(1)}% vs ${totalRawTriangles.toLocaleString('en-US')} brutos)`,
+    `  TOTAL .glb      : ${(totalGlbBytes / 1024 / 1024).toFixed(2)} MB (${totalGlbBytes.toLocaleString('en-US')} B) | ${totalFinalTriangles.toLocaleString('en-US')} tris (redução de ${((1 - totalFinalTriangles / totalRawTriangles) * 100).toFixed(2)}% vs ${totalRawTriangles.toLocaleString('en-US')} brutos)`,
   );
   console.log(`  Tempo total     : ${elapsedSec}s`);
-  console.log(`  Hashes STL salvos em: .cache/bodyparts3d/stl-hashes.json`);
 }
 
 main().catch((err) => {

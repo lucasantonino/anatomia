@@ -18,7 +18,7 @@ import {
 } from '../core/anatomy/registry';
 import type { ViewerStore } from '../core/state/viewerStore';
 
-export const DEFAULT_MANIFEST_URL = '/assets/v1/manifest.json';
+export const DEFAULT_MANIFEST_URL = '/assets/v2/manifest.json';
 
 export interface LoadedSystemAsset {
   readonly system: AnatomySystem;
@@ -49,7 +49,7 @@ function getReadableErrorMessage(error: unknown, fallback: string): string {
 }
 
 /**
- * Converte um caminho lógico canônico de ativo (ex: `/assets/v1/manifest.json`)
+ * Converte um caminho lógico canônico de ativo (ex: `/assets/v2/manifest.json`)
  * na URL de rede correta considerando o `BASE_URL` configurado pelo Vite
  * (essencial para ambientes com subdiretórios como GitHub Pages).
  */
@@ -219,7 +219,7 @@ export class AssetLoader {
   }
 
   /**
-   * Carrega e valida `manifest.json`, `metadata-v1.json` e `coverage-matrix.json`
+   * Carrega e valida `manifest.json`, `metadata-v*.json` e `coverage-matrix.json`
    * sem exigir contexto WebGL 2 — garante que `StructureDrawer` e `CreditsModal`
    * permaneçam úteis mesmo no modo de fallback sem WebGL.
    */

@@ -20,20 +20,44 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
-const MANIFEST_PATH = path.join(PUBLIC_DIR, 'assets', 'v1', 'manifest.json');
 
-// Orçamentos obrigatórios da Fase 1 (Contrato Seção 6, verificação 8)
-const TARGET_MAX_TRIANGLES = 100_000;
-const HARD_MAX_TRIANGLES = 120_000;
-const TARGET_MAX_GLB_BYTES = 3_000_000; // 3,0 MB
-const HARD_MAX_GLB_BYTES = 4_000_000; // 4,0 MB
+const VERSION_BUDGETS = {
+  v1: {
+    targetMaxTriangles: 100_000,
+    hardMaxTriangles: 120_000,
+    targetMaxGlbBytes: 3_000_000, // 3,0 MB
+    hardMaxGlbBytes: 4_000_000, // 4,0 MB
+    skeletalTargetMaxBytes: null,
+    skeletalHardMaxBytes: null,
+    bilateralSymmetryToleranceMeters: 0.035, // 35 mm
+    requireCoverageRegion: false,
+  },
+  v2: {
+    targetMaxTriangles: 320_000,
+    hardMaxTriangles: 400_000,
+    targetMaxGlbBytes: 5_000_000, // 5,0 MB
+    hardMaxGlbBytes: 7_000_000, // 7,0 MB
+    skeletalTargetMaxBytes: 2_000_000, // 2,0 MB
+    skeletalHardMaxBytes: 2_500_000, // 2,5 MB
+    bilateralSymmetryToleranceMeters: 0.045, // 45 mm
+    requireCoverageRegion: true,
+  },
+};
 
-// Tolerâncias geométricas
-const BBOX_SYNC_TOLERANCE_METERS = 0.005; // 5 mm (margem folgada sobre quantização de 14 bits)
-const BILATERAL_SYMMETRY_TOLERANCE_METERS = 0.035; // 3,5 cm (assimetria biológica natural do espécime)
+const BBOX_SYNC_TOLERANCE_METERS = 0.005; // 5 mm
+const MIDLINE_MAX_ABS_X_METERS = 0.06; // 60 mm
 
 const failures = [];
 const warnings = [];
+
+function parseVersionArg() {
+  const arg = process.argv.find((a) => a.startsWith('--version='));
+  const value = arg ? arg.split('=')[1].trim() : 'v2';
+  if (value !== 'v1' && value !== 'v2') {
+    throw new Error(`Versão inválida "${value}". Use --version=v1 ou --version=v2.`);
+  }
+  return value;
+}
 
 function fail(checkId, message) {
   failures.push(`[CHECK ${checkId} FALHOU] ${message}`);
@@ -185,7 +209,11 @@ function inspectGlbMeshNode(node) {
 }
 
 async function main() {
-  console.log('=== ANATOMIA 3D — GATE DE VALIDAÇÃO DE ATIVOS (9 VERIFICAÇÕES) ===\n');
+  const version = parseVersionArg();
+  const budget = VERSION_BUDGETS[version];
+  const MANIFEST_PATH = path.join(PUBLIC_DIR, 'assets', version, 'manifest.json');
+
+  console.log(`=== ANATOMIA 3D — GATE DE VALIDAÇÃO DE ATIVOS [${version}] (9 VERIFICAÇÕES) ===\n`);
 
   // -------------------------------------------------------------------------
   // CHECK 1: Validação Zod de contratos (manifest, metadata, coverage-matrix)
@@ -194,15 +222,15 @@ async function main() {
   try {
     rawManifest = await readJsonFile(MANIFEST_PATH, 'manifest.json');
   } catch (err) {
-    fail(1, `Não foi possível ler manifest.json: ${err.message}`);
-    reportAndExit();
+    fail(1, `Não foi possível ler manifest.json (${MANIFEST_PATH}): ${err.message}`);
+    reportAndExit(version);
     return;
   }
 
   const manifestResult = ManifestSchema.safeParse(rawManifest);
   if (!manifestResult.success) {
     fail(1, `manifest.json falhou no ManifestSchema: ${formatZodIssues(manifestResult.error)}`);
-    reportAndExit();
+    reportAndExit(version);
     return;
   }
   const manifest = manifestResult.data;
@@ -224,7 +252,7 @@ async function main() {
   }
 
   if (!rawMetadata || !rawCoverage) {
-    reportAndExit();
+    reportAndExit(version);
     return;
   }
 
@@ -239,7 +267,7 @@ async function main() {
   }
 
   if (!metadataResult.success || !coverageResult.success) {
-    reportAndExit();
+    reportAndExit(version);
     return;
   }
 
@@ -253,6 +281,10 @@ async function main() {
   // CHECK 2: Coerência de versões
   // -------------------------------------------------------------------------
   let check2Ok = true;
+  if (manifest.assetVersion !== version) {
+    fail(2, `manifest.assetVersion ("${manifest.assetVersion}") difere da versão alvo "${version}".`);
+    check2Ok = false;
+  }
   if (manifest.assetVersion !== metadata.assetVersion) {
     fail(2, `assetVersion divergente: manifest="${manifest.assetVersion}" vs metadata="${metadata.assetVersion}".`);
     check2Ok = false;
@@ -322,7 +354,7 @@ async function main() {
   }
   if (check3Ok) {
     console.log(
-      `[CHECK 3 OK] Integridade binária SHA-256 e bytes validados (skeletal=${glbBuffers.skeletal.byteLength} B, muscular=${glbBuffers.muscular.byteLength} B).`,
+      `[CHECK 3 OK] Integridade binária SHA-256 e bytes validados (skeletal=${glbBuffers.skeletal.byteLength.toLocaleString('en-US')} B, muscular=${glbBuffers.muscular.byteLength.toLocaleString('en-US')} B).`,
     );
   }
 
@@ -361,7 +393,7 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------
-  // CHECK 5: Correspondência 1:1 com a Matriz de Cobertura
+  // CHECK 5: Correspondência 1:1 com a Matriz de Cobertura (incl. region)
   // -------------------------------------------------------------------------
   let check5Ok = true;
   const metaMap = new Map(metadata.structures.map((s) => [s.anatomyId, s]));
@@ -369,13 +401,13 @@ async function main() {
 
   for (const id of metaMap.keys()) {
     if (!covMap.has(id)) {
-      fail(5, `anatomyId "${id}" existe em metadata-v1.json mas falta em coverage-matrix.json.`);
+      fail(5, `anatomyId "${id}" existe em metadata-${version}.json mas falta em coverage-matrix.json.`);
       check5Ok = false;
     }
   }
   for (const id of covMap.keys()) {
     if (!metaMap.has(id)) {
-      fail(5, `anatomyId "${id}" existe em coverage-matrix.json mas falta em metadata-v1.json.`);
+      fail(5, `anatomyId "${id}" existe em coverage-matrix.json mas falta em metadata-${version}.json.`);
       check5Ok = false;
     }
   }
@@ -394,6 +426,15 @@ async function main() {
     }
     if (mEntry.laterality !== cEntry.laterality) {
       fail(5, `Lateralidade divergente para "${id}": metadata="${mEntry.laterality}" vs coverage="${cEntry.laterality}".`);
+      check5Ok = false;
+    }
+    if (cEntry.region !== undefined) {
+      if (cEntry.region !== mEntry.region) {
+        fail(5, `Região divergente para "${id}": metadata="${mEntry.region}" vs coverage="${cEntry.region}".`);
+        check5Ok = false;
+      }
+    } else if (budget.requireCoverageRegion) {
+      fail(5, `Estrutura "${id}" em coverage-matrix.json (${version}) não declara o campo obrigatório "region".`);
       check5Ok = false;
     }
     if (mEntry.review.status !== cEntry.reviewStatus) {
@@ -418,7 +459,7 @@ async function main() {
   }
   if (check5Ok) {
     console.log(
-      `[CHECK 5 OK] Correspondência 1:1 exata entre metadata-v1.json e coverage-matrix.json (${metaMap.size} estruturas).`,
+      `[CHECK 5 OK] Correspondência 1:1 exata entre metadata-${version}.json e coverage-matrix.json (${metaMap.size} estruturas).`,
     );
   }
 
@@ -439,7 +480,6 @@ async function main() {
     muscular: { triangles: 0, meshCount: 0 },
   };
 
-  // Mapa esperado nodeName -> { structure, fmaSet }
   const expectedNodeInfo = new Map();
   for (const s of metadata.structures) {
     for (const nodeName of s.meshNodes) {
@@ -462,7 +502,7 @@ async function main() {
     const doc = await io.readBinary(new Uint8Array(buf));
     const scenes = doc.getRoot().listScenes();
     if (scenes.length === 0) {
-      fail(6, `${sys}-v1.glb não possui nenhuma Scene.`);
+      fail(6, `${sys}-${version}.glb não possui nenhuma Scene.`);
       check6Ok = false;
       continue;
     }
@@ -470,7 +510,7 @@ async function main() {
     const scene = scenes[0];
     const humanBody = scene.listChildren().find((n) => n.getName() === 'HumanBody');
     if (!humanBody) {
-      fail(6, `${sys}-v1.glb não possui nó raiz "HumanBody" sob a Scene.`);
+      fail(6, `${sys}-${version}.glb não possui nó raiz "HumanBody" sob a Scene.`);
       check6Ok = false;
       continue;
     }
@@ -478,12 +518,11 @@ async function main() {
     const expectedGroupName = sys === 'skeletal' ? 'skeletal-system' : 'muscular-system';
     const systemGroup = humanBody.listChildren().find((n) => n.getName() === expectedGroupName);
     if (!systemGroup) {
-      fail(6, `${sys}-v1.glb não possui grupo "${expectedGroupName}" sob "HumanBody".`);
+      fail(6, `${sys}-${version}.glb não possui grupo "${expectedGroupName}" sob "HumanBody".`);
       check6Ok = false;
       continue;
     }
 
-    // Coleta todas as malhas existentes no documento inteiro para garantir que nenhuma ficou fora da hierarquia
     const allMeshNodesInDoc = doc
       .getRoot()
       .listNodes()
@@ -494,7 +533,7 @@ async function main() {
     if (allMeshNodesInDoc.length !== directSystemMeshNodes.length) {
       fail(
         6,
-        `${sys}-v1.glb possui ${allMeshNodesInDoc.length} nó(s) de malha no total, mas apenas ${directSystemMeshNodes.length} sob "HumanBody > ${expectedGroupName}".`,
+        `${sys}-${version}.glb possui ${allMeshNodesInDoc.length} nó(s) de malha no total, mas apenas ${directSystemMeshNodes.length} sob "HumanBody > ${expectedGroupName}".`,
       );
       check6Ok = false;
     }
@@ -504,7 +543,7 @@ async function main() {
       if (!info) continue;
 
       if (inspectedNodesBySystem[sys].has(info.name)) {
-        fail(6, `Nome de nó duplicado em ${sys}-v1.glb: "${info.name}".`);
+        fail(6, `Nome de nó duplicado em ${sys}-${version}.glb: "${info.name}".`);
         check6Ok = false;
       }
       inspectedNodesBySystem[sys].set(info.name, info);
@@ -512,23 +551,23 @@ async function main() {
       measuredTotals[sys].meshCount += 1;
 
       if (info.triangles <= 0 || info.vertices <= 0) {
-        fail(6, `Malha vazia em ${sys}-v1.glb: "${info.name}" (${info.triangles} tris, ${info.vertices} verts).`);
+        fail(6, `Malha vazia em ${sys}-${version}.glb: "${info.name}" (${info.triangles} tris, ${info.vertices} verts).`);
         check6Ok = false;
       }
       if (info.hasNonFinite) {
-        fail(6, `Coordenadas NaN/Inf encontradas em "${info.name}" (${sys}-v1.glb).`);
+        fail(6, `Coordenadas NaN/Inf encontradas em "${info.name}" (${sys}-${version}.glb).`);
         check6Ok = false;
       }
 
       const expected = expectedNodeInfo.get(info.name);
       if (!expected) {
-        fail(6, `Nó órfão encontrado em ${sys}-v1.glb sem entrada em metadata-v1.json: "${info.name}".`);
+        fail(6, `Nó órfão encontrado em ${sys}-${version}.glb sem entrada em metadata-${version}.json: "${info.name}".`);
         check6Ok = false;
         continue;
       }
 
       if (expected.system !== sys) {
-        fail(6, `Nó "${info.name}" está em ${sys}-v1.glb mas metadata declara system="${expected.system}".`);
+        fail(6, `Nó "${info.name}" está em ${sys}-${version}.glb mas metadata declara system="${expected.system}".`);
         check6Ok = false;
       }
 
@@ -536,50 +575,48 @@ async function main() {
       if (anatomyId !== expected.anatomyId) {
         fail(
           6,
-          `Nó "${info.name}" em ${sys}-v1.glb tem extras.anatomyId="${anatomyId}" (esperado "${expected.anatomyId}").`,
+          `Nó "${info.name}" em ${sys}-${version}.glb tem extras.anatomyId="${anatomyId}" (esperado "${expected.anatomyId}").`,
         );
         check6Ok = false;
       }
       if (extrasSystem !== expected.system) {
         fail(
           6,
-          `Nó "${info.name}" em ${sys}-v1.glb tem extras.system="${extrasSystem}" (esperado "${expected.system}").`,
+          `Nó "${info.name}" em ${sys}-${version}.glb tem extras.system="${extrasSystem}" (esperado "${expected.system}").`,
         );
         check6Ok = false;
       }
       if (typeof fmaId !== 'string' || !expected.fmaIds.has(fmaId)) {
         fail(
           6,
-          `Nó "${info.name}" em ${sys}-v1.glb tem extras.fmaId="${fmaId}" não listado em source.fmaIds de "${expected.anatomyId}".`,
+          `Nó "${info.name}" em ${sys}-${version}.glb tem extras.fmaId="${fmaId}" não listado em source.fmaIds de "${expected.anatomyId}".`,
         );
         check6Ok = false;
       }
     }
 
-    // Verifica manifest vs contagens reais decodificadas do .glb
     const sysManifest = manifest.systems[sys];
     if (measuredTotals[sys].meshCount !== sysManifest.meshCount) {
       fail(
         6,
-        `${sys}-v1.glb: meshCount real (${measuredTotals[sys].meshCount}) difere do manifest (${sysManifest.meshCount}).`,
+        `${sys}-${version}.glb: meshCount real (${measuredTotals[sys].meshCount}) difere do manifest (${sysManifest.meshCount}).`,
       );
       check6Ok = false;
     }
     if (measuredTotals[sys].triangles !== sysManifest.triangles) {
       fail(
         6,
-        `${sys}-v1.glb: triângulos reais (${measuredTotals[sys].triangles}) diferem do manifest (${sysManifest.triangles}).`,
+        `${sys}-${version}.glb: triângulos reais (${measuredTotals[sys].triangles}) diferem do manifest (${sysManifest.triangles}).`,
       );
       check6Ok = false;
     }
   }
 
-  // Confirma zero nós ausentes (todos os meshNodes do metadata existem no .glb correspondente)
   for (const s of metadata.structures) {
     const sysMap = inspectedNodesBySystem[s.system];
     for (const nodeName of s.meshNodes) {
       if (!sysMap.has(nodeName)) {
-        fail(6, `Nó ausente: "${nodeName}" declarado em metadata (${s.anatomyId}) não existe em ${s.system}-v1.glb.`);
+        fail(6, `Nó ausente: "${nodeName}" declarado em metadata (${s.anatomyId}) não existe em ${s.system}-${version}.glb.`);
         check6Ok = false;
       }
     }
@@ -604,7 +641,6 @@ async function main() {
       check7Ok = false;
     }
 
-    // Recalcula bounding box real a partir dos vértices decodificados do .glb (pós-quantização)
     const sysMap = inspectedNodesBySystem[s.system];
     const realMin = [Infinity, Infinity, Infinity];
     const realMax = [-Infinity, -Infinity, -Infinity];
@@ -654,46 +690,63 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------
-  // CHECK 8: Orçamento de entrega web (triângulos e bytes)
+  // CHECK 8: Orçamento de entrega web (triângulos e bytes conforme versão)
   // -------------------------------------------------------------------------
   const totalTriangles = measuredTotals.skeletal.triangles + measuredTotals.muscular.triangles;
-  const totalBytes = (glbBuffers.skeletal?.byteLength ?? 0) + (glbBuffers.muscular?.byteLength ?? 0);
+  const skeletalBytes = glbBuffers.skeletal?.byteLength ?? 0;
+  const muscularBytes = glbBuffers.muscular?.byteLength ?? 0;
+  const totalBytes = skeletalBytes + muscularBytes;
   let check8Ok = true;
 
-  if (totalTriangles > HARD_MAX_TRIANGLES) {
+  if (totalTriangles > budget.hardMaxTriangles) {
     fail(
       8,
-      `Orçamento de triângulos excedeu o teto rígido: ${totalTriangles.toLocaleString('en-US')} > ${HARD_MAX_TRIANGLES.toLocaleString('en-US')}.`,
+      `Orçamento de triângulos (${version}) excedeu o teto rígido: ${totalTriangles.toLocaleString('en-US')} > ${budget.hardMaxTriangles.toLocaleString('en-US')}.`,
     );
     check8Ok = false;
-  } else if (totalTriangles > TARGET_MAX_TRIANGLES) {
+  } else if (totalTriangles > budget.targetMaxTriangles) {
     warn(
       8,
-      `Triângulos acima da meta ideal (${totalTriangles.toLocaleString('en-US')} > ${TARGET_MAX_TRIANGLES.toLocaleString('en-US')}), porém dentro do teto de ${HARD_MAX_TRIANGLES.toLocaleString('en-US')}.`,
+      `Triângulos acima da meta ideal (${totalTriangles.toLocaleString('en-US')} > ${budget.targetMaxTriangles.toLocaleString('en-US')}), porém dentro do teto de ${budget.hardMaxTriangles.toLocaleString('en-US')}.`,
     );
   }
 
-  if (totalBytes > HARD_MAX_GLB_BYTES) {
+  if (totalBytes > budget.hardMaxGlbBytes) {
     fail(
       8,
-      `Tamanho total dos .glb excedeu o teto rígido: ${(totalBytes / 1024 / 1024).toFixed(2)} MB > 4.00 MB (${totalBytes} B).`,
+      `Tamanho total dos .glb (${version}) excedeu o teto rígido: ${(totalBytes / 1024 / 1024).toFixed(2)} MB > ${(budget.hardMaxGlbBytes / 1_000_000).toFixed(1)} MB (${totalBytes} B).`,
     );
     check8Ok = false;
-  } else if (totalBytes > TARGET_MAX_GLB_BYTES) {
+  } else if (totalBytes > budget.targetMaxGlbBytes) {
     warn(
       8,
-      `Tamanho total dos .glb acima da meta ideal (${(totalBytes / 1024 / 1024).toFixed(2)} MB > 3.00 MB), porém dentro do teto de 4.00 MB.`,
+      `Tamanho total dos .glb acima da meta ideal (${(totalBytes / 1024 / 1024).toFixed(2)} MB > ${(budget.targetMaxGlbBytes / 1_000_000).toFixed(1)} MB), porém dentro do teto de ${(budget.hardMaxGlbBytes / 1_000_000).toFixed(1)} MB.`,
     );
+  }
+
+  if (budget.skeletalHardMaxBytes !== null) {
+    if (skeletalBytes > budget.skeletalHardMaxBytes) {
+      fail(
+        8,
+        `skeletal-${version}.glb excedeu o teto rígido: ${(skeletalBytes / 1024 / 1024).toFixed(2)} MB > ${(budget.skeletalHardMaxBytes / 1_000_000).toFixed(1)} MB (${skeletalBytes} B).`,
+      );
+      check8Ok = false;
+    } else if (budget.skeletalTargetMaxBytes !== null && skeletalBytes > budget.skeletalTargetMaxBytes) {
+      warn(
+        8,
+        `skeletal-${version}.glb acima da meta ideal (${(skeletalBytes / 1024 / 1024).toFixed(2)} MB > ${(budget.skeletalTargetMaxBytes / 1_000_000).toFixed(1)} MB), dentro do teto de ${(budget.skeletalHardMaxBytes / 1_000_000).toFixed(1)} MB.`,
+      );
+    }
   }
 
   if (check8Ok) {
     console.log(
-      `[CHECK 8 OK] Orçamento web dentro da meta: ${totalTriangles.toLocaleString('en-US')} / ${TARGET_MAX_TRIANGLES.toLocaleString('en-US')} tris | ${(totalBytes / 1024 / 1024).toFixed(2)} MB (${totalBytes.toLocaleString('en-US')} B) / 3.00 MB.`,
+      `[CHECK 8 OK] Orçamento web (${version}) aprovado: ${totalTriangles.toLocaleString('en-US')} / ${budget.targetMaxTriangles.toLocaleString('en-US')} tris | total ${(totalBytes / 1024 / 1024).toFixed(2)} MB (${totalBytes.toLocaleString('en-US')} B; skel=${(skeletalBytes / 1024 / 1024).toFixed(2)} MB, musc=${(muscularBytes / 1024 / 1024).toFixed(2)} MB) / ${(budget.targetMaxGlbBytes / 1_000_000).toFixed(1)} MB.`,
     );
   }
 
   // -------------------------------------------------------------------------
-  // CHECK 9: Sanidade anatômica de lateralidade (centroid.x) e simetria bilateral
+  // CHECK 9: Sanidade anatômica de lateralidade (right/left/midline) e simetria bilateral
   // -------------------------------------------------------------------------
   let check9Ok = true;
   const allInspectedByNodeName = new Map([
@@ -703,7 +756,10 @@ async function main() {
 
   let rightCount = 0;
   let leftCount = 0;
+  let midlineCount = 0;
+  let maxMidlineAbsXMm = 0;
   let maxSymmetryErrorMm = 0;
+  let worstSymmetryPair = 'none';
 
   for (const [nodeName, expected] of expectedNodeInfo.entries()) {
     const info = allInspectedByNodeName.get(nodeName);
@@ -727,10 +783,20 @@ async function main() {
         );
         check9Ok = false;
       }
+    } else if (expected.laterality === 'midline') {
+      midlineCount++;
+      const absX = Math.abs(info.centroid[0]);
+      if (absX * 1000 > maxMidlineAbsXMm) maxMidlineAbsXMm = absX * 1000;
+      if (absX >= MIDLINE_MAX_ABS_X_METERS) {
+        fail(
+          9,
+          `Lateralidade midline violada: "${nodeName}" possui |centroid.x| = ${(absX * 1000).toFixed(1)} mm (limite ${(MIDLINE_MAX_ABS_X_METERS * 1000).toFixed(0)} mm).`,
+        );
+        check9Ok = false;
+      }
     }
   }
 
-  // Simetria bilateral entre os pares antímeros (right <-> left)
   let pairsChecked = 0;
   for (const [nodeName, expected] of expectedNodeInfo.entries()) {
     if (expected.laterality !== 'right') continue;
@@ -746,16 +812,17 @@ async function main() {
     const worstAxis = Math.max(dxSym, dyDiff, dzDiff);
     if (worstAxis * 1000 > maxSymmetryErrorMm) {
       maxSymmetryErrorMm = worstAxis * 1000;
+      worstSymmetryPair = nodeName.replace('.right', '.{right,left}');
     }
 
     if (
-      dxSym > BILATERAL_SYMMETRY_TOLERANCE_METERS ||
-      dyDiff > BILATERAL_SYMMETRY_TOLERANCE_METERS ||
-      dzDiff > BILATERAL_SYMMETRY_TOLERANCE_METERS
+      dxSym > budget.bilateralSymmetryToleranceMeters ||
+      dyDiff > budget.bilateralSymmetryToleranceMeters ||
+      dzDiff > budget.bilateralSymmetryToleranceMeters
     ) {
       fail(
         9,
-        `Assimetria bilateral excessiva no par ${nodeName} <-> ${leftNodeName}: |xR+xL|=${(dxSym * 1000).toFixed(1)}mm, |yR-yL|=${(dyDiff * 1000).toFixed(1)}mm, |zR-zL|=${(dzDiff * 1000).toFixed(1)}mm (limite ${(BILATERAL_SYMMETRY_TOLERANCE_METERS * 1000).toFixed(0)}mm).`,
+        `Assimetria bilateral excessiva no par ${nodeName} <-> ${leftNodeName}: |xR+xL|=${(dxSym * 1000).toFixed(1)}mm, |yR-yL|=${(dyDiff * 1000).toFixed(1)}mm, |zR-zL|=${(dzDiff * 1000).toFixed(1)}mm (limite ${(budget.bilateralSymmetryToleranceMeters * 1000).toFixed(0)}mm).`,
       );
       check9Ok = false;
     }
@@ -763,14 +830,14 @@ async function main() {
 
   if (check9Ok) {
     console.log(
-      `[CHECK 9 OK] Lateralidade anatômica validada em 100% das malhas (${rightCount} right com cx<0, ${leftCount} left com cx>0; ${pairsChecked} pares antímeros com desvio máximo bilateral ${maxSymmetryErrorMm.toFixed(1)} mm).`,
+      `[CHECK 9 OK] Lateralidade anatômica validada em 100% das malhas (${rightCount} right cx<0, ${leftCount} left cx>0, ${midlineCount} midline max|cx|=${maxMidlineAbsXMm.toFixed(1)}mm; ${pairsChecked} pares antímeros com desvio máximo bilateral ${maxSymmetryErrorMm.toFixed(1)} mm em ${worstSymmetryPair}).`,
     );
   }
 
-  reportAndExit();
+  reportAndExit(version);
 }
 
-function reportAndExit() {
+function reportAndExit(version) {
   console.log('');
   if (warnings.length > 0) {
     console.warn(`=== ALERTAS (${warnings.length}) ===`);
@@ -781,14 +848,14 @@ function reportAndExit() {
   }
 
   if (failures.length > 0) {
-    console.error(`=== FALHAS NO GATE (${failures.length}) ===`);
+    console.error(`=== FALHAS NO GATE [${version}] (${failures.length}) ===`);
     for (const f of failures) {
       console.error(`  ${f}`);
     }
     process.exit(1);
   }
 
-  console.log('=== GATE validate:assets APROVADO (9/9 VERIFICAÇÕES PASSARAM) ===');
+  console.log(`=== GATE validate:assets [${version}] APROVADO (9/9 VERIFICAÇÕES PASSARAM) ===`);
   process.exit(0);
 }
 

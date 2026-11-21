@@ -158,14 +158,16 @@ O controle segmentado (`Músculos | Ossos | Ambos`) e o atalho rápido (`Mostrar
 
 ### 3.3 Índice Anatômico (`registry.ts`)
 
-Após o carregamento validado de `metadata-v1.json`, o `AnatomyRegistry` constrói índices em memória $O(1)$ e de busca textual normalizada:
+Após o carregamento validado de `metadata-<versao>.json`, o `AnatomyRegistry` constrói índices em memória $O(1)$ e de busca textual normalizada:
 
 - `byAnatomyId: Map<string, StructureMetadata>`
 - `byMeshNode: Map<string, string>` (mapeia cada nome de nó/submalha ao `anatomyId` pai)
-- `search(query: string, filterSystem?: AnatomySystem | 'all'): StructureMetadata[]`:
+- `getCountByRegion(filterSystem?: AnatomySystemFilter): RegionStructureCounts`: retorna contagens pré-calculadas por macro-região (`all`, `head_neck`, `trunk`, `upper_limb`, `lower_limb`) respeitando o filtro de sistema ativo.
+- `getAll(filterSystem?: AnatomySystemFilter, filterRegion?: AnatomyRegionFilter): StructureMetadata[]`
+- `search(query: string, filterSystem?: AnatomySystemFilter, filterRegion?: AnatomyRegionFilter): StructureMetadata[]`:
   - Normaliza consulta e textos com `.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()`.
-  - Casa simultaneamente contra `displayName['pt-BR']`, `displayName.la`, `scientificName`, `anatomyId` e termos de lateralidade (`direito`/`esquerdo`/`left`/`right`).
-  - Ordena priorizando correspondência no início do nome em português e agrupando por região/lateralidade.
+  - Casa simultaneamente contra `displayName['pt-BR']`, `displayName.la`, `scientificName`, `anatomyId`, termos de lateralidade (`direito`/`esquerdo`/`left`/`right`/`mediano`/`midline`) e rótulos regionais (`cabeca pescoco`, `tronco`, `membro superior`, `membro inferior`).
+  - Ordena priorizando correspondência no início do nome em português (`PT-BR > Latim > demais`) e desempate alfabético/lateralidade.
 
 ---
 
@@ -186,7 +188,7 @@ Responsável pelo ciclo de vida completo do WebGL 2 e coordenação entre sub-m�
     - Luz de recorte (*Rim* `DirectionalLight`, `0xffffff`, intensidade `0.85`) posterior para destacar silhueta de escápula, clavícula e bordas musculares contra o fundo `#000000`.
 - **Câmera e `OrbitControls`:**
   - `PerspectiveCamera` com `fov = 38` (baixa distorção anatômica em perspectiva) enquadrando inicialmente a vista anatômica **anterior** centralizada do recorte (com margem confortável acima da cintura escapular e abaixo dos antebraços).
-  - `OrbitControls`: `enableDamping = true`, `dampingFactor = 0.08`, rotação livre 360° em azimute e polar `[0.15 rad, π - 0.15 rad]`, `minDistance` e `maxDistance` proporcionais ao raio da *bounding sphere* do modelo carregado (`0.6×R` a `5.0×R`), `enablePan = true` com limite para não perder o modelo fora da tela.
+  - `OrbitControls`: `enableDamping = true`, `dampingFactor = 0.08`, rotação livre 360° em azimute e polar `[0.15 rad, π - 0.15 rad]`, `minDistance` (`Math.max(0.12, 0.18×R)`, permitindo inspeção aproximada de crânio, vértebras, mãos e pés no corpo completo) e `maxDistance` (`Math.max(2.5, 4.5×R)`), `enablePan = true` com limite para não perder o modelo fora da tela.
   - `resetView()`: retorna suavemente (ou instantaneamente quando `prefers-reduced-motion: reduce`) para a vista anatômica anterior padrão.
   - `focusStructure(anatomyId)`: calcula o centro e o tamanho da *bounding box* da estrutura e interpola `camera.position` e `controls.target` em direção ao lado externo anatômico mais legível (anterior ou posterior conforme a estrutura, evitando atravessar o tórax). Qualquer evento `start` do `OrbitControls` por ponteiro/teclado cancela imediatamente a animação automática.
 - **Desempenho e resiliência:**
@@ -196,30 +198,26 @@ Responsável pelo ciclo de vida completo do WebGL 2 e coordenação entre sub-m�
 
 ### 4.2 `AssetLoader.ts`
 
-Gerencia o carregamento validado, progressivo e resiliente dos ativos:
+Gerencia o carregamento validado, progressivo e resiliente dos ativos (padrão `DEFAULT_MANIFEST_URL = '/assets/v2/manifest.json'`, resolvendo caminhos relativos via `resolveNetworkAssetUrl()` para compatibilidade com `base: './'` em subdiretórios como GitHub Pages):
 
-1. Faz *fetch* de `/assets/v1/manifest.json` e valida com `ManifestSchema` (Zod).
-2. Faz *fetch* de `metadataUrl` (`metadata-v1.json`) e valida com `MetadataDocumentSchema` (Zod), verificando `manifest.assetVersion === metadata.assetVersion` e `manifest.metadataVersion === metadata.metadataVersion`.
-3. Carrega **`skeletal-v1.glb` primeiro** usando `GLTFLoader` + `MeshoptDecoder`:
-   - Assim que o esqueleto termina de decodificar, acopla `skeletal-system` à cena, ajusta a câmera inicial e libera a interação imediatamente (o usuário já pode orbitar e identificar os 10 ossos enquanto a musculatura termina de baixar).
-4. Em seguida (ou em paralelo caso já em cache HTTP, aplicando na cena na ordem segura), carrega **`muscular-v1.glb`** e acopla `muscular-system` diretamente na origem da cena (sem reaplicar `sceneOriginOffset`, pois o deslocamento já é embutido nos vértices dos `.glb` durante `build:assets`).
-5. **Falha isolada por camada (`RNF Confiabilidade`):** se `muscular-v1.glb` falhar por rede instável, `skeletal-system` permanece 100% interativo e um aviso não destrutivo oferece o botão **Tentar novamente** apenas para a camada que falhou (`retrySystem('muscular')`).
+1. Faz *fetch* de `manifest.json` (`v2`) e valida com `ManifestSchema` (Zod).
+2. Faz *fetch* de `metadataUrl` (`metadata-v2.json`) e valida com `MetadataDocumentSchema` (Zod), verificando `manifest.assetVersion === metadata.assetVersion` e `manifest.metadataVersion === metadata.metadataVersion`.
+3. Carrega **`skeletal-v2.glb` primeiro** usando `GLTFLoader` + `MeshoptDecoder` local:
+   - Assim que o esqueleto termina de decodificar, acopla `skeletal-system` à cena, ajusta a câmera inicial e libera a interação imediatamente (o usuário já pode orbitar e identificar as 201 estruturas ósseas enquanto a musculatura termina de baixar).
+4. Em seguida, carrega **`muscular-v2.glb`** e acopla `muscular-system` diretamente na origem da cena (sem reaplicar `sceneOriginOffset`, pois o deslocamento já é embutido nos vértices dos `.glb` durante `build:assets`).
+5. **Falha isolada por camada (`RNF Confiabilidade`):** se `muscular-v2.glb` falhar por rede instável, `skeletal-system` permanece 100% interativo e um aviso não destrutivo oferece o botão **Tentar novamente** apenas para a camada que falhou (`retrySystem('muscular')`).
 6. Durante o registro das malhas carregadas, cada `THREE.Mesh` recebe `mesh.userData.anatomyId` e `mesh.userData.system` resolvidos pelo `extras.anatomyId` (e validados contra `registry.ts`).
 
 ### 4.3 `MaterialManager.ts`
 
-Controla aparência clínica, opacidade e realce reversível (Seção 8.1 e Seção 11.1 da spec):
+Controla aparência clínica, opacidade e realce reversível (Seção 8.1 e Seção 11.1 da spec) utilizando um **pool fixo de 6 instâncias compartilhadas de `MeshStandardMaterial`** (`skeletal` e `muscular` × `default`, `hovered`, `selected`) para evitar compilação excessiva de shaders e troca de estado em cenas com centenas de malhas (`635` malhas na `v2`):
 
 - **Materiais-base PBR clínicos (sem brilho plástico de videogame):**
   - **Osso (`skeletal`):** `MeshStandardMaterial({ color: '#ddd6c7', roughness: 0.72, metalness: 0.04 })` — marfim fosco mineralizado com resposta nítida a luz de recorte.
-  - **Músculo (`muscular`):** `MeshStandardMaterial({ color: '#8f3834', roughness: 0.56, metalness: 0.03 })` — tom miológico sóbrio com leve diferenciação tonal automática por grupo/cabeça quando necessário, sem perder a unidade visual.
-- **Gestão de realce 100% reversível:**
-  - Antes de alterar qualquer propriedade visual, o `MaterialManager` armazena um *snapshot* imutável por estrutura (`baseColor`, `baseEmissive`, `baseEmissiveIntensity`, `baseOpacity`, `baseRoughness`).
-  - **Estados visuais aplicáveis a todas as malhas de um mesmo `anatomyId`:** (garantindo que, ao passar o cursor na cabeça longa do bíceps, **todo** o bíceps braquial esquerdo seja realçado de forma coesa)
-    - `default`: restaura exatamente o *snapshot* + aplica `muscleOpacity` se for músculo.
-    - `hovered`: eleva `emissive` para acento clínico quente (`#ff9e6d` em baixa intensidade `0.32` para músculo; `#6ec8ff` intensidade `0.28` para osso) + clareamento sutil da cor base (+12% em espaço linear).
-    - `selected`: `emissiveIntensity` reforçado (`0.42`), destacando claramente a estrutura fixada mesmo com câmera distante.
-    - `dimmed` (opcional sutil quando há estrutura fixada na gaveta): atenua levemente a saturação/luminosidade das demais estruturas da mesma camada para destacar o alvo sem fazê-las desaparecer.
+  - **Músculo (`muscular`):** `MeshStandardMaterial({ color: '#8f3834', roughness: 0.56, metalness: 0.03 })` — tom miológico sóbrio.
+- **Gestão de realce 100% reversível por troca de material compartilhado:**
+  - Todas as malhas em repouso do mesmo sistema compartilham `default`; ao destacar uma estrutura (`hoveredId` ou `selectedId`), todas as submalhas daquele `anatomyId` (ex.: múltiplas cabeças musculares) recebem simultaneamente a instância compartilhada `hovered` (`#ff9e6d` `0.32` para músculo; `#6ec8ff` `0.28` para osso + clareamento +12% linear) ou `selected` (`emissiveIntensity: 0.42`), retornando exatamente ao material `default` ao sair.
+  - `AnatomyEngine` utiliza `disposeObjectGeometries()` para liberar geometrias em *retry* sem descartar o pool gerenciado pelo `MaterialManager`.
 - **Modo experimental de opacidade muscular (`muscleOpacity`):**
   - Quando `visibleSystems` contém apenas `'muscular'`, os músculos são renderizados em opacidade `1.0` (`transparent: false`, `depthWrite: true`), preservando leitura sólida.
   - Quando `visibleSystems` contém `'muscular'` e `'skeletal'` (`Ambos`):

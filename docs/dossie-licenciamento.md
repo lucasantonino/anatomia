@@ -112,3 +112,19 @@ Durante a execução de `npm run build:assets` (Marco 2 de [plano-de-implementac
 |---|---:|---:|---:|---|
 | `public/assets/v1/skeletal-v1.glb` | 169.216 | 34.200 | 10 | `dbf73fa745f2ef899b12a017a4dfe5cb85faeff95009adf55096f4386e9904ef` |
 | `public/assets/v1/muscular-v1.glb` | 317.728 | 59.972 | 26 | `4c32a49bf4bab67ad7ecb47ef63ac3a5322a2417953f8593a8ccdaab1586323d` |
+
+---
+
+## 5. Registro de Proveniência e Integridade (`v2` — MVP Corpo Completo)
+
+Na **Fase 2**, a unidade de lançamento `v2` expande o recorte mantendo a mesma fonte **BodyParts3D v3.0 (DBCLS)** sob licença **`CC BY-SA 2.1 JP`** (`575` estruturas / `635` malhas STL brutas somando `958,23 MiB` e `20.094.438` triângulos). Os hashes **SHA-256** individuais de todos os **635 arquivos STL brutos** (incluindo os 4 arquivos com `stlId` proprietário `BP44`–`BP47` mapeados aos FMA oficiais `FMA38507`/`FMA38508`, `FMA77260` e `FMA77261`) estão registrados em [proveniencia-v2-hashes.json](./proveniencia-v2-hashes.json).
+
+### Hashes SHA-256 dos ativos otimizados publicados (`public/assets/v2/`)
+
+| Arquivo | Tamanho (B) | Triângulos | Malhas | SHA-256 |
+|---|---:|---:|---:|---|
+| `public/assets/v2/skeletal-v2.glb` | 907.880 | 123.846 | 203 | `f48984f165c765cd3905c3f74c93c970e95d3aab4bc2524f7c91aa864133e37d` |
+| `public/assets/v2/muscular-v2.glb` | 1.565.372 | 186.238 | 432 | `2942d2fe7011623e6dbc207ecd66443ce6a77d1254c19c5c082fab575f54507f` |
+
+- **Atribuição na UI (`CreditsModal`):** exibida dinamicamente a partir de `manifest.license`, `coverageMatrix.scopeStatement` e contagens do manifesto ativo (`assetVersion: v2`, `575 estruturas`, `635 malhas`, `pending_review`).
+- **Licença do código-fonte:** código da aplicação e scripts sob `MIT` ([LICENSE](../LICENSE)); modelos 3D derivados `.glb` sob **`CC BY-SA 2.1 JP`**.

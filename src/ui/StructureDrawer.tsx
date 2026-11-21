@@ -9,13 +9,30 @@ import {
 } from 'react';
 import type { StructureMetadata } from '../core/schema/anatomy';
 import type {
+  AnatomyRegionFilter,
   AnatomyRegistry,
   AnatomySystemFilter,
 } from '../core/anatomy/registry';
 import type { SystemLoadStatus, WebGLStatus } from '../core/state/viewerStore';
-import { formatLateralityChip, formatSystemLabel } from './types';
+import {
+  formatLateralityChip,
+  formatRegionCompactLabel,
+  formatRegionLabel,
+  formatSystemLabel,
+} from './types';
 import { useDialogFocus } from './useDialogFocus';
 import styles from './StructureDrawer.module.css';
+
+const REGION_FILTER_OPTIONS: ReadonlyArray<{
+  readonly value: AnatomyRegionFilter;
+  readonly label: string;
+}> = [
+  { value: 'all', label: 'Todas' },
+  { value: 'head_neck', label: formatRegionCompactLabel('head_neck') },
+  { value: 'trunk', label: formatRegionCompactLabel('trunk') },
+  { value: 'upper_limb', label: formatRegionCompactLabel('upper_limb') },
+  { value: 'lower_limb', label: formatRegionCompactLabel('lower_limb') },
+];
 
 export interface StructureDrawerProps {
   readonly open: boolean;
@@ -33,7 +50,8 @@ export interface StructureDrawerProps {
 
 /**
  * Gaveta pesquisável de estruturas anatômicas (ADR-005 e Seção 3.3 de UX):
- * alternativa textual 100% operável por teclado ao hover/toque 3D.
+ * alternativa textual 100% operável por teclado ao hover/toque 3D, com filtros
+ * combinados por sistema e por região anatômica.
  * Lateral direita no desktop (>= 768 px) e bottom-sheet no mobile (< 768 px).
  */
 export function StructureDrawer({
@@ -54,6 +72,7 @@ export function StructureDrawer({
 
   const [query, setQuery] = useState('');
   const [filterSystem, setFilterSystem] = useState<AnatomySystemFilter>('all');
+  const [filterRegion, setFilterRegion] = useState<AnatomyRegionFilter>('all');
 
   const localContainerRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -79,10 +98,11 @@ export function StructureDrawer({
   });
 
   const counts = registry.getCountBySystem();
+  const regionCounts = registry.getCountByRegion(filterSystem);
 
   const results = useMemo(
-    () => registry.search(query, filterSystem),
-    [registry, query, filterSystem],
+    () => registry.search(query, filterSystem, filterRegion),
+    [registry, query, filterSystem, filterRegion],
   );
 
   const handleClearQuery = (): void => {
@@ -93,6 +113,7 @@ export function StructureDrawer({
   const handleResetFilters = (): void => {
     setQuery('');
     setFilterSystem('all');
+    setFilterRegion('all');
     searchInputRef.current?.focus();
   };
 
@@ -102,6 +123,8 @@ export function StructureDrawer({
 
   const isCatalogLoading =
     counts.all === 0 && (manifestStatus === 'idle' || manifestStatus === 'loading');
+  const hasActiveFilters =
+    query.length > 0 || filterSystem !== 'all' || filterRegion !== 'all';
 
   return (
     <>
@@ -140,159 +163,190 @@ export function StructureDrawer({
           </button>
         </div>
 
-        <div className={styles.controls}>
-          {webglStatus === 'unsupported' ? (
-            <p className={styles.fallbackNotice}>
-              Modo de referência textual ativo (visualização 3D indisponível neste
-              dispositivo).
-            </p>
-          ) : null}
-
-          <div className={styles.searchField}>
-            <label htmlFor={searchInputId} className={styles.searchLabel}>
-              Buscar estrutura (PT-BR ou latim)
-            </label>
-            <div className={styles.searchInputWrap}>
-              <input
-                ref={searchInputRef}
-                id={searchInputId}
-                type="search"
-                className={`${styles.searchInput} ${
-                  query.length > 0 ? styles.searchInputWithClear : ''
-                }`}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Ex.: bíceps, clavícula, humerus..."
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {query.length > 0 ? (
-                <button
-                  type="button"
-                  className={styles.clearButton}
-                  aria-label="Limpar busca"
-                  onClick={handleClearQuery}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <div
-            className={styles.filterGroup}
-            role="group"
-            aria-label="Filtrar por sistema anatômico"
-          >
-            <button
-              type="button"
-              className={`${styles.filterButton} ${
-                filterSystem === 'all' ? styles.filterButtonActive : ''
-              }`}
-              aria-pressed={filterSystem === 'all'}
-              onClick={() => setFilterSystem('all')}
-            >
-              Todas ({counts.all})
-            </button>
-            <button
-              type="button"
-              className={`${styles.filterButton} ${
-                filterSystem === 'muscular' ? styles.filterButtonActive : ''
-              }`}
-              aria-pressed={filterSystem === 'muscular'}
-              onClick={() => setFilterSystem('muscular')}
-            >
-              Músculos ({counts.muscular})
-            </button>
-            <button
-              type="button"
-              className={`${styles.filterButton} ${
-                filterSystem === 'skeletal' ? styles.filterButtonActive : ''
-              }`}
-              aria-pressed={filterSystem === 'skeletal'}
-              onClick={() => setFilterSystem('skeletal')}
-            >
-              Ossos ({counts.skeletal})
-            </button>
-          </div>
-
-          <p className={styles.resultsMeta}>
-            {isCatalogLoading
-              ? 'Carregando catálogo...'
-              : `${results.length} de ${counts.all} estruturas`}
-          </p>
-        </div>
-
-        <div className={styles.listContainer}>
-          {isCatalogLoading ? (
-            <div className={styles.emptyState}>
-              <p>Carregando catálogo de estruturas anatômicas...</p>
-            </div>
-          ) : results.length === 0 ? (
-            <div className={styles.emptyState}>
-              <p>
-                {query.trim().length > 0
-                  ? `Nenhuma estrutura encontrada para "${query.trim()}".`
-                  : 'Nenhuma estrutura disponível neste filtro.'}
+        <div className={styles.drawerBody}>
+          <div className={styles.controls}>
+            {webglStatus === 'unsupported' ? (
+              <p className={styles.fallbackNotice}>
+                Modo de referência textual ativo (visualização 3D indisponível neste
+                dispositivo).
               </p>
-              {query.length > 0 || filterSystem !== 'all' ? (
-                <button
-                  type="button"
-                  className={styles.resetFilterButton}
-                  onClick={handleResetFilters}
-                >
-                  Limpar filtros
-                </button>
-              ) : null}
+            ) : null}
+
+            <div className={styles.searchField}>
+              <label htmlFor={searchInputId} className={styles.searchLabel}>
+                Buscar estrutura (PT-BR ou latim)
+              </label>
+              <div className={styles.searchInputWrap}>
+                <input
+                  ref={searchInputRef}
+                  id={searchInputId}
+                  type="search"
+                  className={`${styles.searchInput} ${
+                    query.length > 0 ? styles.searchInputWithClear : ''
+                  }`}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Ex.: fêmur, crânio, trapézio, bíceps..."
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {query.length > 0 ? (
+                  <button
+                    type="button"
+                    className={styles.clearButton}
+                    aria-label="Limpar busca"
+                    onClick={handleClearQuery}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+              </div>
             </div>
-          ) : (
-            <ul className={styles.list} aria-label="Resultados de estruturas anatômicas">
-              {results.map((structure) => {
-                const isSelected = selectedId === structure.anatomyId;
+
+            <div
+              className={styles.filterGroup}
+              role="group"
+              aria-label="Filtrar por sistema anatômico"
+            >
+              <button
+                type="button"
+                className={`${styles.filterButton} ${
+                  filterSystem === 'all' ? styles.filterButtonActive : ''
+                }`}
+                aria-pressed={filterSystem === 'all'}
+                onClick={() => setFilterSystem('all')}
+              >
+                Todas ({counts.all})
+              </button>
+              <button
+                type="button"
+                className={`${styles.filterButton} ${
+                  filterSystem === 'muscular' ? styles.filterButtonActive : ''
+                }`}
+                aria-pressed={filterSystem === 'muscular'}
+                onClick={() => setFilterSystem('muscular')}
+              >
+                Músculos ({counts.muscular})
+              </button>
+              <button
+                type="button"
+                className={`${styles.filterButton} ${
+                  filterSystem === 'skeletal' ? styles.filterButtonActive : ''
+                }`}
+                aria-pressed={filterSystem === 'skeletal'}
+                onClick={() => setFilterSystem('skeletal')}
+              >
+                Ossos ({counts.skeletal})
+              </button>
+            </div>
+
+            <div
+              className={styles.regionFilterGroup}
+              role="group"
+              aria-label="Filtrar por região anatômica"
+            >
+              {REGION_FILTER_OPTIONS.map((option) => {
+                const isActive = filterRegion === option.value;
                 return (
-                  <li key={structure.anatomyId}>
-                    <button
-                      type="button"
-                      className={`${styles.itemButton} ${
-                        isSelected ? styles.itemButtonSelected : ''
-                      }`}
-                      aria-pressed={isSelected}
-                      aria-current={isSelected ? 'true' : undefined}
-                      onClick={() => onSelectStructure(structure)}
-                    >
-                      <span className={styles.itemHeader}>
-                        <span className={styles.itemNamePt}>
-                          {structure.displayName['pt-BR']}
-                        </span>
-                        {isSelected ? (
-                          <span className={styles.itemSelectedTag}>Selecionada</span>
-                        ) : null}
-                      </span>
-                      <span className={styles.itemNameLa} lang="la">
-                        {structure.displayName.la}
-                      </span>
-                      <span className={styles.itemMeta}>
-                        <span className={styles.chip}>
-                          <span
-                            className={`${styles.dot} ${
-                              structure.system === 'muscular'
-                                ? styles.dotMuscular
-                                : styles.dotSkeletal
-                            }`}
-                            aria-hidden="true"
-                          />
-                          {formatSystemLabel(structure.system)}
-                        </span>
-                        <span className={`${styles.chip} ${styles.chipSecondary}`}>
-                          {formatLateralityChip(structure.laterality)}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`${styles.regionButton} ${
+                      isActive ? styles.filterButtonActive : ''
+                    }`}
+                    aria-pressed={isActive}
+                    onClick={() => setFilterRegion(option.value)}
+                  >
+                    {option.label} ({regionCounts[option.value]})
+                  </button>
                 );
               })}
-            </ul>
-          )}
+            </div>
+
+            <p className={styles.resultsMeta}>
+              {isCatalogLoading
+                ? 'Carregando catálogo...'
+                : `${results.length} de ${counts.all} estruturas`}
+            </p>
+          </div>
+
+          <div className={styles.listContainer}>
+            {isCatalogLoading ? (
+              <div className={styles.emptyState}>
+                <p>Carregando catálogo de estruturas anatômicas...</p>
+              </div>
+            ) : results.length === 0 ? (
+              <div className={styles.emptyState}>
+                <p>
+                  {query.trim().length > 0
+                    ? `Nenhuma estrutura encontrada para "${query.trim()}".`
+                    : 'Nenhuma estrutura disponível neste filtro.'}
+                </p>
+                {hasActiveFilters ? (
+                  <button
+                    type="button"
+                    className={styles.resetFilterButton}
+                    onClick={handleResetFilters}
+                  >
+                    Limpar filtros
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <ul
+                className={styles.list}
+                aria-label="Resultados de estruturas anatômicas"
+              >
+                {results.map((structure) => {
+                  const isSelected = selectedId === structure.anatomyId;
+                  return (
+                    <li key={structure.anatomyId} className={styles.listItem}>
+                      <button
+                        type="button"
+                        className={`${styles.itemButton} ${
+                          isSelected ? styles.itemButtonSelected : ''
+                        }`}
+                        aria-pressed={isSelected}
+                        aria-current={isSelected ? 'true' : undefined}
+                        onClick={() => onSelectStructure(structure)}
+                      >
+                        <span className={styles.itemHeader}>
+                          <span className={styles.itemNamePt}>
+                            {structure.displayName['pt-BR']}
+                          </span>
+                          {isSelected ? (
+                            <span className={styles.itemSelectedTag}>Selecionada</span>
+                          ) : null}
+                        </span>
+                        <span className={styles.itemNameLa} lang="la">
+                          {structure.displayName.la}
+                        </span>
+                        <span className={styles.itemMeta}>
+                          <span className={styles.chip}>
+                            <span
+                              className={`${styles.dot} ${
+                                structure.system === 'muscular'
+                                  ? styles.dotMuscular
+                                  : styles.dotSkeletal
+                              }`}
+                              aria-hidden="true"
+                            />
+                            {formatSystemLabel(structure.system)}
+                          </span>
+                          <span className={`${styles.chip} ${styles.chipSecondary}`}>
+                            {formatLateralityChip(structure.laterality)}
+                          </span>
+                          <span className={`${styles.chip} ${styles.chipSecondary}`}>
+                            {formatRegionLabel(structure.region)}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       </aside>
     </>

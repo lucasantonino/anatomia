@@ -6,6 +6,7 @@ import {
   normalizeSearchText,
 } from '../../src/core/anatomy/registry';
 import type {
+  AnatomyRegion,
   AnatomySystem,
   Laterality,
   MetadataDocument,
@@ -18,6 +19,7 @@ function makeStructure(params: {
   laterality: Laterality;
   ptBr: string;
   la: string;
+  region?: AnatomyRegion;
   scientificName?: string;
   meshNodes?: string[];
   fmaIds?: string[];
@@ -26,7 +28,7 @@ function makeStructure(params: {
     anatomyId: params.anatomyId,
     system: params.system,
     laterality: params.laterality,
-    region: 'upper_limb',
+    region: params.region ?? 'upper_limb',
     displayName: {
       'pt-BR': params.ptBr,
       la: params.la,
@@ -466,6 +468,246 @@ describe('AnatomyRegistry — busca textual PT-BR, Latim, lateralidade, filtros 
       'muscle.biceps_brachii.right',
       'muscle.biceps_brachii.left',
       'muscle.triceps_brachii.right',
+    ]);
+  });
+});
+
+describe('AnatomyRegistry — filtros regionais, getCountByRegion e termos regionais (Fase 2)', () => {
+  const multiRegionStructures: StructureMetadata[] = [
+    makeStructure({
+      anatomyId: 'bone.cranium.midline',
+      system: 'skeletal',
+      laterality: 'midline',
+      region: 'head_neck',
+      ptBr: 'Crânio',
+      la: 'Cranium',
+      fmaIds: ['FMA46565'],
+    }),
+    makeStructure({
+      anatomyId: 'muscle.sternocleidomastoideus.left',
+      system: 'muscular',
+      laterality: 'left',
+      region: 'head_neck',
+      ptBr: 'Músculo esternocleidomastóideo',
+      la: 'Musculus sternocleidomastoideus',
+      fmaIds: ['FMA13407'],
+    }),
+    makeStructure({
+      anatomyId: 'bone.sternum.midline',
+      system: 'skeletal',
+      laterality: 'midline',
+      region: 'trunk',
+      ptBr: 'Esterno',
+      la: 'Sternum',
+      fmaIds: ['FMA7485'],
+    }),
+    makeStructure({
+      anatomyId: 'muscle.rectus_abdominis.right',
+      system: 'muscular',
+      laterality: 'right',
+      region: 'trunk',
+      ptBr: 'Músculo reto do abdome',
+      la: 'Musculus rectus abdominis',
+      fmaIds: ['FMA9628'],
+    }),
+    makeStructure({
+      anatomyId: 'bone.clavicula.right',
+      system: 'skeletal',
+      laterality: 'right',
+      region: 'upper_limb',
+      ptBr: 'Clavícula',
+      la: 'Clavicula',
+      fmaIds: ['FMA13322'],
+    }),
+    makeStructure({
+      anatomyId: 'muscle.biceps_brachii.left',
+      system: 'muscular',
+      laterality: 'left',
+      region: 'upper_limb',
+      ptBr: 'Músculo bíceps braquial',
+      la: 'Musculus biceps brachii',
+      fmaIds: ['FMA37685'],
+    }),
+    makeStructure({
+      anatomyId: 'bone.femur.right',
+      system: 'skeletal',
+      laterality: 'right',
+      region: 'lower_limb',
+      ptBr: 'Fêmur',
+      la: 'Femur',
+      fmaIds: ['FMA9611'],
+    }),
+    makeStructure({
+      anatomyId: 'bone.femur.left',
+      system: 'skeletal',
+      laterality: 'left',
+      region: 'lower_limb',
+      ptBr: 'Fêmur',
+      la: 'Femur',
+      fmaIds: ['FMA9612'],
+    }),
+    makeStructure({
+      anatomyId: 'muscle.quadriceps_femoris.right',
+      system: 'muscular',
+      laterality: 'right',
+      region: 'lower_limb',
+      ptBr: 'Músculo quadríceps femoral',
+      la: 'Musculus quadriceps femoris',
+      fmaIds: ['FMA22428'],
+    }),
+  ];
+
+  const multiRegionRegistry = new AnatomyRegistry(multiRegionStructures);
+
+  it('calcula getCountByRegion por sistema (all, skeletal, muscular) e no registro vazio', () => {
+    expect(multiRegionRegistry.getCountByRegion()).toEqual({
+      all: 9,
+      head_neck: 2,
+      trunk: 2,
+      upper_limb: 2,
+      lower_limb: 3,
+    });
+
+    expect(multiRegionRegistry.getCountByRegion('skeletal')).toEqual({
+      all: 5,
+      head_neck: 1,
+      trunk: 1,
+      upper_limb: 1,
+      lower_limb: 2,
+    });
+
+    expect(multiRegionRegistry.getCountByRegion('muscular')).toEqual({
+      all: 4,
+      head_neck: 1,
+      trunk: 1,
+      upper_limb: 1,
+      lower_limb: 1,
+    });
+
+    const empty = createEmptyAnatomyRegistry();
+    expect(empty.getCountByRegion()).toEqual({
+      all: 0,
+      head_neck: 0,
+      trunk: 0,
+      upper_limb: 0,
+      lower_limb: 0,
+    });
+  });
+
+  it('filtra getAll(filterSystem, filterRegion) nas 4 regiões isoladamente e combinadas com sistema', () => {
+    expect(
+      multiRegionRegistry.getAll('all', 'head_neck').map((s) => s.anatomyId),
+    ).toEqual(['bone.cranium.midline', 'muscle.sternocleidomastoideus.left']);
+
+    expect(
+      multiRegionRegistry.getAll('all', 'trunk').map((s) => s.anatomyId),
+    ).toEqual(['bone.sternum.midline', 'muscle.rectus_abdominis.right']);
+
+    expect(
+      multiRegionRegistry.getAll('all', 'upper_limb').map((s) => s.anatomyId),
+    ).toEqual(['bone.clavicula.right', 'muscle.biceps_brachii.left']);
+
+    expect(
+      multiRegionRegistry.getAll('all', 'lower_limb').map((s) => s.anatomyId),
+    ).toEqual([
+      'bone.femur.right',
+      'bone.femur.left',
+      'muscle.quadriceps_femoris.right',
+    ]);
+
+    expect(
+      multiRegionRegistry.getAll('skeletal', 'lower_limb').map((s) => s.anatomyId),
+    ).toEqual(['bone.femur.right', 'bone.femur.left']);
+
+    expect(
+      multiRegionRegistry.getAll('muscular', 'trunk').map((s) => s.anatomyId),
+    ).toEqual(['muscle.rectus_abdominis.right']);
+  });
+
+  it('filtra search(query, filterSystem, filterRegion) e suporta termos regionais em PT-BR', () => {
+    // Consulta vazia respeita filterSystem + filterRegion
+    expect(
+      multiRegionRegistry.search('   ', 'skeletal', 'head_neck').map((s) => s.anatomyId),
+    ).toEqual(['bone.cranium.midline']);
+
+    // Mesma consulta textual em regiões diferentes
+    expect(
+      multiRegionRegistry.search('femur', 'all', 'lower_limb').map((s) => s.anatomyId),
+    ).toEqual(['bone.femur.right', 'bone.femur.left']);
+    expect(multiRegionRegistry.search('femur', 'all', 'upper_limb')).toEqual([]);
+
+    // Consulta por lateralidade restrita à região
+    expect(
+      multiRegionRegistry.search('direito', 'all', 'lower_limb').map((s) => s.anatomyId),
+    ).toEqual(['bone.femur.right', 'muscle.quadriceps_femoris.right']);
+
+    // Termos regionais em PT-BR (sem acento e com acento)
+    expect(
+      multiRegionRegistry.search('cabeça').map((s) => s.anatomyId),
+    ).toEqual(['bone.cranium.midline', 'muscle.sternocleidomastoideus.left']);
+
+    expect(
+      multiRegionRegistry.search('torax').map((s) => s.anatomyId),
+    ).toEqual(['bone.sternum.midline', 'muscle.rectus_abdominis.right']);
+
+    expect(
+      multiRegionRegistry.search('ombro').map((s) => s.anatomyId),
+    ).toEqual(['bone.clavicula.right', 'muscle.biceps_brachii.left']);
+
+    expect(
+      multiRegionRegistry.search('coxa').map((s) => s.anatomyId),
+    ).toEqual([
+      'bone.femur.right',
+      'bone.femur.left',
+      'muscle.quadriceps_femoris.right',
+    ]);
+  });
+
+  it('mantém prioridade de nomes exatos PT-BR e Latim acima de correspondências puramente regionais', () => {
+    const rankingRegistry = new AnatomyRegistry([
+      // Correspondência somente pelo termo regional "coxa" (rank 30)
+      makeStructure({
+        anatomyId: 'bone.femur.right',
+        system: 'skeletal',
+        laterality: 'right',
+        region: 'lower_limb',
+        ptBr: 'Fêmur',
+        la: 'Femur',
+      }),
+      // Correspondência no início do nome em Latim (rank 20)
+      makeStructure({
+        anatomyId: 'bone.os_coxae.right',
+        system: 'skeletal',
+        laterality: 'right',
+        region: 'lower_limb',
+        ptBr: 'Osso do quadril',
+        la: 'Coxa os',
+      }),
+      // Correspondência por substring no nome PT-BR (rank 11)
+      makeStructure({
+        anatomyId: 'muscle.adductor_coxa.right',
+        system: 'muscular',
+        laterality: 'right',
+        region: 'lower_limb',
+        ptBr: 'Músculo adutor da coxa',
+        la: 'Musculus adductor magnus',
+      }),
+      // Início exato no nome PT-BR (rank 0)
+      makeStructure({
+        anatomyId: 'bone.coxa_exact.right',
+        system: 'skeletal',
+        laterality: 'right',
+        region: 'lower_limb',
+        ptBr: 'Coxal',
+        la: 'Os ilium',
+      }),
+    ]);
+
+    expect(rankingRegistry.search('coxa').map((s) => s.anatomyId)).toEqual([
+      'bone.coxa_exact.right',
+      'muscle.adductor_coxa.right',
+      'bone.os_coxae.right',
+      'bone.femur.right',
     ]);
   });
 });

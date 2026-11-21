@@ -1,4 +1,5 @@
 import type {
+  AnatomyRegion,
   AnatomySystem,
   CoverageMatrix,
   Laterality,
@@ -61,5 +62,31 @@ export function formatLateralityChip(laterality: Laterality): string {
       return 'Lado esquerdo';
     case 'midline':
       return 'Linha média';
+  }
+}
+
+export function formatRegionLabel(region: AnatomyRegion): string {
+  switch (region) {
+    case 'head_neck':
+      return 'Cabeça e pescoço';
+    case 'trunk':
+      return 'Tronco';
+    case 'upper_limb':
+      return 'Membro superior';
+    case 'lower_limb':
+      return 'Membro inferior';
+  }
+}
+
+export function formatRegionCompactLabel(region: AnatomyRegion): string {
+  switch (region) {
+    case 'head_neck':
+      return 'Cabeça/Pescoço';
+    case 'trunk':
+      return 'Tronco';
+    case 'upper_limb':
+      return 'M. Superior';
+    case 'lower_limb':
+      return 'M. Inferior';
   }
 }

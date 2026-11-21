@@ -156,6 +156,12 @@
   font-weight: 700;
 }
 
+.reviewBadgeApproved {
+  border-color: rgba(88, 184, 255, 0.65);
+  background-color: rgba(88, 184, 255, 0.16);
+  color: var(--accent-primary);
+}
+
 .educationalBox {
   padding: 12px;
   border-radius: var(--radius-md);

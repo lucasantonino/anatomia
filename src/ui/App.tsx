@@ -438,6 +438,7 @@ export function App({ store: storeProp, engine: engineProp }: AppProps = {}) {
       <StatusOverlay
         webglStatus={state.webglStatus}
         loadState={state.loadState}
+        totalStructures={catalog.registry.size}
         onRetrySystem={handleRetrySystem}
         onRetryAll={handleRetryAll}
         onOpenDrawer={handleOpenDrawer}

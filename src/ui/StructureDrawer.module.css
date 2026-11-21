@@ -71,6 +71,16 @@
   border-color: var(--border-strong);
 }
 
+/* No mobile (< 768px), controles e lista compartilham rolagem fluida dentro do bottom-sheet */
+.drawerBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+}
+
 .controls {
   display: flex;
   flex-direction: column;
@@ -164,6 +174,12 @@
   gap: 4px;
 }
 
+.regionFilterGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .filterButton {
   display: inline-flex;
   align-items: center;
@@ -184,7 +200,29 @@
     color var(--transition-fast);
 }
 
-.filterButton:hover {
+.regionButton {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--surface-elevated);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.filterButton:hover,
+.regionButton:hover {
   background-color: var(--surface-interactive-hover);
   color: var(--text-primary);
 }
@@ -202,9 +240,7 @@
 }
 
 .listContainer {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  flex: 1 0 auto;
   padding: 8px calc(12px + var(--safe-right)) calc(14px + var(--safe-bottom))
     calc(12px + var(--safe-left));
 }
@@ -216,6 +252,11 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.listItem {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 78px;
 }
 
 .itemButton {
@@ -278,7 +319,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   margin-top: 2px;
 }
 
@@ -286,11 +327,11 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border-subtle);
   background-color: rgba(0, 0, 0, 0.35);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -371,6 +412,10 @@
     padding: calc(10px + var(--safe-top)) calc(14px + var(--safe-right)) 10px 14px;
   }
 
+  .drawerBody {
+    overflow: hidden;
+  }
+
   .controls {
     padding: 12px calc(14px + var(--safe-right)) 12px 14px;
   }
@@ -381,6 +426,10 @@
   }
 
   .listContainer {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 10px calc(14px + var(--safe-right)) calc(16px + var(--safe-bottom)) 14px;
   }
 }

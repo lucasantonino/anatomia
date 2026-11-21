@@ -155,7 +155,10 @@ Segue rigorosamente o esquema da Seção 8.4 da [especificacao-tecnica-anatomia-
 
 ### 3.3 `coverage-matrix.json`
 
-Representação legível por máquina de [matriz-de-cobertura.md](./matriz-de-cobertura.md), contendo `coverageMatrixVersion`, `scopeStatement` (declarando explicitamente o recorte da Fase 1), lista de estruturas esperadas com `anatomyId`, `system`, `laterality`, `presentInAsset: true`, `detailLevel: "segmentado_por_estrutura_e_subpartes"`, `meshNodes`, `fmaIds` e `reviewStatus`.
+Representação legível por máquina de [matriz-de-cobertura.md](./matriz-de-cobertura.md) (`v1`) e [matriz-de-cobertura-v2.md](./matriz-de-cobertura-v2.md) (`v2`), contendo `coverageMatrixVersion`, `scopeStatement` (declarando explicitamente o escopo e limitações da versão), lista de estruturas esperadas com `anatomyId`, `system`, `laterality`, `region` (`'head_neck' | 'trunk' | 'upper_limb' | 'lower_limb'`, opcional na `v1` e presente na `v2`), `presentInAsset: true`, `detailLevel: "segmentado_por_estrutura_e_subpartes"`, `meshNodes`, `fmaIds` e `reviewStatus`.
+
+- **Enum `AnatomyRegionSchema` (`src/core/schema/anatomy.ts`):** `z.enum(['head_neck', 'trunk', 'upper_limb', 'lower_limb'])`.
+- **Separação `stlId` vs. `fmaId` no pipeline (`v2`):** para as 4 cabeças do *extensor carpi ulnaris* cujo arquivo STL upstream usa identificador proprietário `BP44`–`BP47`, o catálogo mantém `stlId` apenas para o download/rastreabilidade do STL e emite estritamente identificadores FMA válidos (`FMA38507`/`FMA38508`, `FMA77260`, `FMA77261`) em `extras.fmaId` e `source.fmaIds`.
 
 ---
 
@@ -237,23 +240,22 @@ Após converter todos os 36 arquivos para metros:
 
 ## 6. Gate Automatizado de Validação (`scripts/validate-assets.mjs`)
 
-O comando `npm run validate:assets` (executado após `build:assets` e no pipeline de CI antes do build de produção) falha com código de saída diferente de zero se qualquer uma das 9 verificações abaixo falhar:
+Os scripts `scripts/build-assets.mjs` e `scripts/validate-assets.mjs` aceitam `--version=v1|v2` (padrão `v2`). O comando `npm run validate:assets` (executado após `build:assets` e no pipeline de CI antes do build de produção) falha com código de saída diferente de zero se qualquer uma das 9 verificações abaixo falhar:
 
-1. **Validação Zod de contratos:** `manifest.json`, `metadata-v1.json` e `coverage-matrix.json` passam 100% nos schemas Zod de `src/core/schema/anatomy.ts`.
+1. **Validação Zod de contratos:** `manifest.json`, `metadata-<versao>.json` e `coverage-matrix.json` passam 100% nos schemas Zod de `src/core/schema/anatomy.ts` (incluindo `AnatomyRegionSchema`).
 2. **Coerência de versões:** `manifest.assetVersion === metadata.assetVersion` e `manifest.metadataVersion === metadata.metadataVersion`.
 3. **Integridade binária:** os arquivos `.glb` apontados existem em disco e possuem `sha256` e `bytes` idênticos aos declarados no `manifest.json`.
 4. **Convenção de IDs:** 100% dos `anatomyId` respeitam a regex `^(bone|muscle)\.[a-z][a-z0-9_]*\.(left|right|midline)(\.[a-z0-9_]+)?$`.
-5. **Correspondência 1:1 com a Matriz de Cobertura:** o conjunto de `anatomyId` em `metadata-v1.json` coincide exatamente com o de `coverage-matrix.json`.
-6. **Zero nós órfãos ou ausentes nos `.glb`:** todo nome listado em `meshNodes[]` existe como nó de malha no `.glb` correspondente (sob `skeletal-system` ou `muscular-system`), e nenhuma malha identificável dentro dos `.glb` fica sem entrada em `metadata-v1.json`.
+5. **Correspondência 1:1 com a Matriz de Cobertura:** o conjunto de `anatomyId` (e `region`, quando declarado) em `metadata` coincide exatamente com o de `coverage-matrix.json`.
+6. **Zero nós órfãos ou ausentes nos `.glb`:** todo nome listado em `meshNodes[]` existe como nó de malha no `.glb` correspondente (sob `skeletal-system` ou `muscular-system`), e nenhuma malha identificável dentro dos `.glb` fica sem entrada no `metadata`.
 7. **Sanidade geométrica de `labelAnchor`:** cada `labelAnchor` possui 3 números finitos contidos dentro da `boundingBox` (com tolerância máxima de 5 mm) da respectiva estrutura.
-8. **Orçamento de entrega web:** soma de triângulos `<= 120.000` (alvo `<= 100.000`) e tamanho total dos dois `.glb` `<= 4,0 MB` (alvo `<= 3,0 MB`).
-9. **Sanidade anatômica de lateralidade:** todas as 18 malhas `right` possuem `centroid.x < 0` e todas as 18 malhas `left` possuem `centroid.x > 0` em coordenadas glTF, com simetria bilateral verificada entre pares antímeros.
+8. **Orçamento de entrega web:**
+   - `v1` (Fase 1): soma de triângulos `<= 120.000` (alvo `<= 100.000`) e tamanho total dos dois `.glb` `<= 4,0 MB` (alvo `<= 3,0 MB`).
+   - `v2` (Fase 2 — Corpo Completo): soma de triângulos `<= 400.000` (alvo `<= 320.000`), tamanho total dos dois `.glb` `<= 7,0 MB` (alvo `<= 5,0 MB`) e `skeletal-v2.glb <= 2,5 MB` (alvo `<= 2,0 MB`).
+9. **Sanidade anatômica de lateralidade:** todas as malhas `right` possuem `centroid.x < 0`, todas as malhas `left` possuem `centroid.x > 0` e todas as malhas `midline` possuem `|centroid.x| < 0,06 m` em coordenadas glTF, com simetria bilateral verificada entre pares antímeros (tolerância `35 mm` na `v1`, `45 mm` na `v2`).
 
 ---
 
-## 7. Caminho de Evolução para a Fase 2 (Corpo Completo)
+## 7. Execução Concluída na Fase 2 (BodyParts3D v3.0 Completo — `v2`)
 
-O contrato acima foi desenhado para escalar ao corpo humano completo sem alterar o código de renderização, estado ou UI:
-
-- **Opção A (BodyParts3D completo):** expandir o catálogo em `scripts/anatomy-catalog.mjs` para incluir os demais ossos e músculos dentre os 937 arquivos STL disponíveis no repositório, agrupando por regiões (`head_neck`, `trunk`, `upper_limb`, `lower_limb`) e mantendo `skeletal-v2.glb` + `muscular-v2.glb` (ou divisão por regiões/LODs sob o mesmo `manifest.json`).
-- **Opção B (Z-Anatomy completo via Blender):** exportar um `.glb` de Z-Anatomy seguindo a mesma árvore `HumanBody > skeletal-system / muscular-system` e convenção `extras.anatomyId`, alimentando o mesmo `validate-assets.mjs` e mantendo exatamente os mesmos `anatomyId` alinhados à *Terminologia Anatomica*.
+A Fase 2 foi concretizada seguindo a **Opção A (BodyParts3D v3.0 completo)** por meio de `scripts/generate-v2-catalog-draft.mjs`, `scripts/anatomy-catalog-v2.json` e `scripts/anatomy-catalog-v2.mjs`, gerando `public/assets/v2/` com **575 estruturas** e **635 malhas** (`310.084` triângulos e `2,36 MB` totais: `skeletal-v2.glb` = `0,87 MB`, `muscular-v2.glb` = `1,49 MB`), preservando integralmente `public/assets/v1/`. Uma eventual migração futura para **Z-Anatomy via Blender** (Opção B) continua compatível com o mesmo contrato `.glb` + Zod.

@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnatomyRegistry } from '../../src/core/anatomy/registry';
 import type {
+  AnatomyRegion,
   AnatomySystem,
   CoverageMatrix,
   Laterality,
@@ -20,6 +21,7 @@ import {
 import { App } from '../../src/ui/App';
 import { CreditsModal } from '../../src/ui/CreditsModal';
 import { LayerControls } from '../../src/ui/LayerControls';
+import { StatusOverlay } from '../../src/ui/StatusOverlay';
 import { StructureDrawer } from '../../src/ui/StructureDrawer';
 import type { AnatomyEnginePort, CatalogSnapshot } from '../../src/ui/types';
 
@@ -36,6 +38,7 @@ function makeStructure(params: {
   laterality: Laterality;
   ptBr: string;
   la: string;
+  region?: AnatomyRegion;
   meshNodes?: string[];
   fmaIds?: string[];
 }): StructureMetadata {
@@ -43,7 +46,7 @@ function makeStructure(params: {
     anatomyId: params.anatomyId,
     system: params.system,
     laterality: params.laterality,
-    region: 'upper_limb',
+    region: params.region ?? 'upper_limb',
     displayName: {
       'pt-BR': params.ptBr,
       la: params.la,
@@ -495,6 +498,140 @@ describe('StructureDrawer', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('filtra por região anatômica, combina sistema + região com contagens dinâmicas e reseta via Limpar filtros', () => {
+    const multiRegionStructures: StructureMetadata[] = [
+      makeStructure({
+        anatomyId: 'bone.cranium.midline',
+        system: 'skeletal',
+        laterality: 'midline',
+        region: 'head_neck',
+        ptBr: 'Crânio',
+        la: 'Cranium',
+        fmaIds: ['FMA46565'],
+      }),
+      makeStructure({
+        anatomyId: 'bone.sternum.midline',
+        system: 'skeletal',
+        laterality: 'midline',
+        region: 'trunk',
+        ptBr: 'Esterno',
+        la: 'Sternum',
+        fmaIds: ['FMA7485'],
+      }),
+      makeStructure({
+        anatomyId: 'muscle.rectus_abdominis.right',
+        system: 'muscular',
+        laterality: 'right',
+        region: 'trunk',
+        ptBr: 'Músculo reto do abdome',
+        la: 'Musculus rectus abdominis',
+        fmaIds: ['FMA9628'],
+      }),
+      makeStructure({
+        anatomyId: 'muscle.biceps_brachii.left',
+        system: 'muscular',
+        laterality: 'left',
+        region: 'upper_limb',
+        ptBr: 'Músculo bíceps braquial',
+        la: 'Musculus biceps brachii',
+        fmaIds: ['FMA37685'],
+      }),
+      makeStructure({
+        anatomyId: 'bone.femur.right',
+        system: 'skeletal',
+        laterality: 'right',
+        region: 'lower_limb',
+        ptBr: 'Fêmur',
+        la: 'Femur',
+        fmaIds: ['FMA9611'],
+      }),
+      makeStructure({
+        anatomyId: 'muscle.quadriceps_femoris.right',
+        system: 'muscular',
+        laterality: 'right',
+        region: 'lower_limb',
+        ptBr: 'Músculo quadríceps femoral',
+        la: 'Musculus quadriceps femoris',
+        fmaIds: ['FMA22428'],
+      }),
+    ];
+
+    const registry = new AnatomyRegistry(multiRegionStructures);
+
+    render(
+      <StructureDrawer
+        open={true}
+        registry={registry}
+        selectedId={null}
+        manifestStatus="loaded"
+        webglStatus="ready"
+        isMobile={false}
+        onClose={vi.fn()}
+        onSelectStructure={vi.fn()}
+      />,
+    );
+
+    const systemGroup = screen.getByRole('group', {
+      name: 'Filtrar por sistema anatômico',
+    });
+    const regionGroup = screen.getByRole('group', {
+      name: 'Filtrar por região anatômica',
+    });
+
+    // Contagens iniciais nas 4 regiões
+    expect(
+      within(regionGroup).getByRole('button', { name: 'Todas (6)' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      within(regionGroup).getByRole('button', { name: 'Cabeça/Pescoço (1)' }),
+    ).toBeInTheDocument();
+    expect(
+      within(regionGroup).getByRole('button', { name: 'Tronco (2)' }),
+    ).toBeInTheDocument();
+    expect(
+      within(regionGroup).getByRole('button', { name: 'M. Superior (1)' }),
+    ).toBeInTheDocument();
+    const lowerLimbBtn = within(regionGroup).getByRole('button', {
+      name: 'M. Inferior (2)',
+    });
+
+    // Filtrar por região M. Inferior
+    fireEvent.click(lowerLimbBtn);
+    expect(lowerLimbBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Fêmur')).toBeInTheDocument();
+    expect(screen.getByText('Músculo quadríceps femoral')).toBeInTheDocument();
+    expect(screen.queryByText('Crânio')).not.toBeInTheDocument();
+    expect(screen.queryByText('Esterno')).not.toBeInTheDocument();
+
+    // Combinar sistema Músculos + região M. Inferior
+    fireEvent.click(
+      within(systemGroup).getByRole('button', { name: 'Músculos (3)' }),
+    );
+    expect(screen.getByText('Músculo quadríceps femoral')).toBeInTheDocument();
+    expect(screen.queryByText('Fêmur')).not.toBeInTheDocument();
+
+    // Contagens regionais atualizam dinamicamente para o sistema filtrado (Músculos)
+    const headNeckZeroBtn = within(regionGroup).getByRole('button', {
+      name: 'Cabeça/Pescoço (0)',
+    });
+    fireEvent.click(headNeckZeroBtn);
+    expect(
+      screen.getByText('Nenhuma estrutura disponível neste filtro.'),
+    ).toBeInTheDocument();
+
+    // Limpar filtros restaura sistema, região e lista completa
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+    expect(
+      within(systemGroup).getByRole('button', { name: 'Todas (6)' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      within(regionGroup).getByRole('button', { name: 'Todas (6)' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Crânio')).toBeInTheDocument();
+    expect(screen.getByText('Fêmur')).toBeInTheDocument();
+    expect(screen.getByText('Músculo bíceps braquial')).toBeInTheDocument();
+  });
 });
 
 describe('CreditsModal', () => {
@@ -541,6 +678,153 @@ describe('CreditsModal', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('renderiza dinamicamente versões, contagens, scopeStatement, malhas e licença de um manifesto v2', () => {
+    const manifestV2: Manifest = {
+      schemaVersion: '1.0.0',
+      assetVersion: 'v2',
+      metadataVersion: 'v2',
+      coverageMatrixVersion: 'v2',
+      coordinateSystem: 'gltf-y-up-meters-anterior-pos-z',
+      sceneOriginOffset: [0, -0.88, 0.02],
+      metadataUrl: '/assets/v2/metadata-v2.json',
+      coverageMatrixUrl: '/assets/v2/coverage-matrix.json',
+      systems: {
+        skeletal: {
+          url: '/assets/v2/skeletal-v2.glb',
+          sha256: SAMPLE_SHA,
+          bytes: 1_200_000,
+          triangles: 90_000,
+          meshCount: 85,
+        },
+        muscular: {
+          url: '/assets/v2/muscular-v2.glb',
+          sha256: SAMPLE_SHA,
+          bytes: 1_450_000,
+          triangles: 110_000,
+          meshCount: 115,
+        },
+      },
+      license: {
+        sourceName: 'BodyParts3D v3.0 (DBCLS) — Corpo Inteiro',
+        spdxOrIdentifier: 'CC-BY-SA-2.1-JP',
+        attributionText:
+          'BodyParts3D, Copyright 2008 DBCLS, licenciado sob CC Attribution-ShareAlike 2.1 Japan.',
+        licenseUrl: 'https://creativecommons.org/licenses/by-sa/2.1/jp/deed.en',
+      },
+    };
+
+    const v2Coverage: CoverageMatrix = {
+      schemaVersion: '1.0.0',
+      assetVersion: 'v2',
+      coverageMatrixVersion: 'v2',
+      scopeStatement:
+        'Fase 2 (v2): cobertura de corpo inteiro nas 4 regiões anatômicas (cabeça/pescoço, tronco, membro superior e membro inferior).',
+      generatedAt: '2026-11-21T00:00:00Z',
+      structures: [
+        {
+          anatomyId: 'bone.cranium.midline',
+          system: 'skeletal',
+          laterality: 'midline',
+          region: 'head_neck',
+          presentInAsset: true,
+          detailLevel: 'segmentado_por_estrutura_e_subpartes',
+          meshNodes: ['bone.cranium.midline'],
+          fmaIds: ['FMA46565'],
+          reviewStatus: 'pending_review',
+        },
+        {
+          anatomyId: 'bone.femur.right',
+          system: 'skeletal',
+          laterality: 'right',
+          region: 'lower_limb',
+          presentInAsset: true,
+          detailLevel: 'segmentado_por_estrutura_e_subpartes',
+          meshNodes: ['bone.femur.right'],
+          fmaIds: ['FMA9611'],
+          reviewStatus: 'pending_review',
+        },
+        {
+          anatomyId: 'muscle.quadriceps_femoris.right',
+          system: 'muscular',
+          laterality: 'right',
+          region: 'lower_limb',
+          presentInAsset: true,
+          detailLevel: 'segmentado_por_estrutura_e_subpartes',
+          meshNodes: ['muscle.quadriceps_femoris.right'],
+          fmaIds: ['FMA22428'],
+          reviewStatus: 'pending_review',
+        },
+        {
+          anatomyId: 'bone.stapes.right',
+          system: 'skeletal',
+          laterality: 'right',
+          region: 'head_neck',
+          presentInAsset: false,
+          detailLevel: 'excluido_escala',
+          meshNodes: [],
+          fmaIds: ['FMA52751'],
+          reviewStatus: 'pending_review',
+        },
+      ],
+    };
+
+    render(
+      <CreditsModal
+        open={true}
+        manifest={manifestV2}
+        coverageMatrix={v2Coverage}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByTestId('credits-modal');
+    const text = dialog.textContent ?? '';
+
+    // Versões v2, total de malhas (85 + 115 = 200) e somente estruturas presentInAsset=true (3 = 2 ossos + 1 músculo)
+    expect(text).toContain('v2');
+    expect(text).toContain('200 malhas');
+    expect(text).toContain('3 estruturas (2 ossos e 1 músculos)');
+    expect(text).toContain(v2Coverage.scopeStatement);
+    expect(text).toContain('BodyParts3D v3.0 (DBCLS)');
+    expect(text).toContain('CC BY-SA 2.1 JP');
+    expect(text).toContain('pending_review');
+  });
+});
+
+describe('StatusOverlay', () => {
+  it('exibe contagem dinâmica totalStructures no fallback WebGL unsupported e texto genérico quando omitida', () => {
+    const idleLoadState = createViewerStore().getState().loadState;
+
+    const { rerender } = render(
+      <StatusOverlay
+        webglStatus="unsupported"
+        loadState={idleLoadState}
+        totalStructures={148}
+        onRetrySystem={vi.fn()}
+        onRetryAll={vi.fn()}
+        onOpenDrawer={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('status-webgl-unsupported')).toHaveTextContent(
+      'todas as 148 estruturas anatômicas desta versão na lista textual.',
+    );
+
+    rerender(
+      <StatusOverlay
+        webglStatus="unsupported"
+        loadState={idleLoadState}
+        onRetrySystem={vi.fn()}
+        onRetryAll={vi.fn()}
+        onOpenDrawer={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('status-webgl-unsupported')).toHaveTextContent(
+      'todas as estruturas anatômicas desta versão na lista textual.',
+    );
   });
 });
 

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1.0.0",
+  "assetVersion": "v2",
+  "metadataVersion": "v2",
+  "coverageMatrixVersion": "v2",
+  "coordinateSystem": "gltf-y-up-meters-anterior-pos-z",
+  "sceneOriginOffset": [
+    0,
+    -0.816872,
+    -0.101339
+  ],
+  "metadataUrl": "/assets/v2/metadata-v2.json",
+  "coverageMatrixUrl": "/assets/v2/coverage-matrix.json",
+  "systems": {
+    "skeletal": {
+      "url": "/assets/v2/skeletal-v2.glb",
+      "sha256": "f48984f165c765cd3905c3f74c93c970e95d3aab4bc2524f7c91aa864133e37d",
+      "bytes": 907880,
+      "triangles": 123846,
+      "meshCount": 203
+    },
+    "muscular": {
+      "url": "/assets/v2/muscular-v2.glb",
+      "sha256": "2942d2fe7011623e6dbc207ecd66443ce6a77d1254c19c5c082fab575f54507f",
+      "bytes": 1565372,
+      "triangles": 186238,
+      "meshCount": 432
+    }
+  },
+  "license": {
+    "sourceName": "BodyParts3D v3.0 (DBCLS)",
+    "spdxOrIdentifier": "CC-BY-SA-2.1-JP",
+    "attributionText": "BodyParts3D, Copyright 2008 Life Science Integrated Database Center licensed by CC Attribution-ShareAlike 2.1 Japan.",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.1/jp/deed.en"
+  }
+}

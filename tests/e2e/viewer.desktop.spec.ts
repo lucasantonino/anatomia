@@ -8,8 +8,8 @@ import {
   waitForViewerFullyLoaded,
 } from './helpers';
 
-test.describe('Anatomia 3D — Desktop (1280x720)', () => {
-  test('renderiza cena WebGL 2 em fundo #000000, alterna camadas/opacidade sem recarregar e gera evidências 01-03', async ({
+test.describe('Anatomia 3D v2 — Desktop (1280x720)', () => {
+  test('renderiza corpo inteiro v2 em fundo #000000, alterna camadas/opacidade sem recarregar e gera evidências 01-03', async ({
     page,
   }) => {
     const diag = attachDiagnostics(page);
@@ -23,12 +23,15 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     await page.goto('/');
     await waitForViewerFullyLoaded(page);
 
+    // Badge v2 no cabeçalho
+    await expect(page.getByLabel('Versão v2')).toHaveText('v2');
+
     // Marcador de sessão para comprovar zero reloads durante trocas de camada
     await page.evaluate(() => {
       (window as unknown as Record<string, unknown>).__noReloadToken = 'alive';
     });
 
-    // RF-01: fundo #000000 puro e canvas WebGL renderizando pixels não-pretos
+    // RF-01: fundo #000000 puro e canvas WebGL 2 renderizando pixels reais
     const bodyBg = await page.evaluate(
       () => getComputedStyle(document.body).backgroundColor,
     );
@@ -38,11 +41,17 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     expect(initialPixels.nonBlackSamples).toBeGreaterThan(500);
 
     await page.screenshot({
-      path: visualAuditPath('01-desktop-both-anterior.png'),
+      path: visualAuditPath('01-v2-desktop-fullbody-anterior.png'),
     });
 
     const glbCountAfterLoad = glbRequests.length;
     expect(glbCountAfterLoad).toBe(2);
+    expect(glbRequests.some((url) => url.endsWith('/assets/v2/skeletal-v2.glb'))).toBe(
+      true,
+    );
+    expect(glbRequests.some((url) => url.endsWith('/assets/v2/muscular-v2.glb'))).toBe(
+      true,
+    );
 
     const layerGroup = page.getByRole('group', { name: 'Camadas anatômicas' });
     const btnMuscles = layerGroup.getByRole('button', { name: 'Músculos' });
@@ -51,9 +60,9 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     const toggleMuscles = page.getByRole('button', {
       name: /Mostrar músculos/i,
     });
-    const opacitySlider = page.locator(
-      '[data-testid="layer-controls"] input[type="range"]',
-    );
+    const opacitySlider = page.getByRole('slider', {
+      name: /Opacidade dos músculos/i,
+    });
 
     // Estado inicial: Ambos ativo, slider presente em 100%
     await expect(btnBoth).toHaveAttribute('aria-pressed', 'true');
@@ -61,7 +70,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     await expect(opacitySlider).toBeVisible();
     await expect(opacitySlider).toHaveValue('100');
 
-    // RF-03: Somente Ossos -> slider oculto
+    // RF-03: Somente Ossos -> slider oculto e captura 02 (esqueleto completo)
     await btnBones.click();
     await expect(btnBones).toHaveAttribute('aria-pressed', 'true');
     await expect(toggleMuscles).toHaveAttribute('aria-pressed', 'false');
@@ -69,7 +78,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     await waitAnimationFrames(page, 4);
 
     await page.screenshot({
-      path: visualAuditPath('02-desktop-bones-only.png'),
+      path: visualAuditPath('02-v2-desktop-skeleton-anterior.png'),
     });
 
     // RF-03 + RF-04: Músculos isolado -> clicar Mostrar músculos transita para Ossos (nunca tela vazia)
@@ -94,7 +103,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     await waitAnimationFrames(page, 4);
 
     await page.screenshot({
-      path: visualAuditPath('03-desktop-muscles-opacity-30.png'),
+      path: visualAuditPath('03-v2-desktop-opacity-30.png'),
     });
 
     // RF-07: Opacidade 20% -> aviso modo fantasma visível
@@ -114,7 +123,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     expectZeroRuntimeErrors(diag);
   });
 
-  test('gaveta Estruturas, busca PT-BR/Latim, etiqueta 2D projetada com anti-colisão, aria-live e evidências 04-06', async ({
+  test('gaveta Estruturas v2 (575), filtros regionais nas 4 macro-regiões, etiqueta 2D, aria-live e evidências 04-06', async ({
     page,
   }) => {
     const diag = attachDiagnostics(page);
@@ -129,49 +138,74 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     const drawer = page.getByTestId('structure-drawer');
     await expect(drawer).toBeVisible();
 
-    // Contagens dinâmicas da matriz Fase 1
-    await expect(drawer.getByRole('button', { name: 'Todas (22)' })).toBeVisible();
+    // Contagens dinâmicas por sistema na v2 (575 total = 374 músculos + 201 ossos)
+    const systemGroup = drawer.getByRole('group', {
+      name: 'Filtrar por sistema anatômico',
+    });
     await expect(
-      drawer.getByRole('button', { name: 'Músculos (12)' }),
+      systemGroup.getByRole('button', { name: 'Todas (575)' }),
     ).toBeVisible();
-    await expect(drawer.getByRole('button', { name: 'Ossos (10)' })).toBeVisible();
+    await expect(
+      systemGroup.getByRole('button', { name: 'Músculos (374)' }),
+    ).toBeVisible();
+    await expect(
+      systemGroup.getByRole('button', { name: 'Ossos (201)' }),
+    ).toBeVisible();
+
+    // Contagens dinâmicas nas 4 macro-regiões (137 + 104 + 152 + 182 = 575)
+    const regionGroup = drawer.getByRole('group', {
+      name: 'Filtrar por região anatômica',
+    });
+    await expect(
+      regionGroup.getByRole('button', { name: 'Todas (575)' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    const btnHeadNeck = regionGroup.getByRole('button', {
+      name: 'Cabeça/Pescoço (137)',
+    });
+    const btnTrunk = regionGroup.getByRole('button', { name: 'Tronco (104)' });
+    const btnUpperLimb = regionGroup.getByRole('button', {
+      name: 'M. Superior (152)',
+    });
+    const btnLowerLimb = regionGroup.getByRole('button', {
+      name: 'M. Inferior (182)',
+    });
+    await expect(btnHeadNeck).toBeVisible();
+    await expect(btnTrunk).toBeVisible();
+    await expect(btnUpperLimb).toBeVisible();
+    await expect(btnLowerLimb).toBeVisible();
 
     const searchBox = drawer.getByRole('searchbox', {
       name: /Buscar estrutura/i,
     });
+    const labelCard = page.getByTestId('anatomy-label-card');
 
-    // Busca em Latim
-    await searchBox.fill('Musculus deltoideus');
-    await expect(
-      drawer.getByRole('button', { name: /Músculo deltoide/i }).first(),
-    ).toBeVisible();
+    // 1) Membro inferior: filtra M. Inferior (182) e seleciona Fêmur direito (evidência 04)
+    await btnLowerLimb.click();
+    await expect(btnLowerLimb).toHaveAttribute('aria-pressed', 'true');
+    await expect(drawer).toContainText('182 de 575 estruturas');
 
-    // Busca PT-BR sem acento + lateralidade: Músculo bíceps braquial (esquerdo)
-    await searchBox.fill('biceps esquerdo');
+    await searchBox.fill('femur direito');
     await drawer
-      .getByRole('button', { name: /Músculo bíceps braquial/i })
+      .getByRole('button', { name: /Fêmur\s+Femur/i })
       .first()
       .click();
 
-    const labelCard = page.getByTestId('anatomy-label-card');
     await expect(labelCard).toHaveAttribute('data-active', 'true');
     await expect(labelCard).toHaveAttribute('data-pinned', 'true');
     await expect(labelCard).toBeVisible();
-    await expect(labelCard).toContainText('Músculo bíceps braquial');
-    await expect(labelCard).toContainText('Musculus biceps brachii');
-    await expect(labelCard).toContainText('Muscular');
-    await expect(labelCard).toContainText('Lado esquerdo');
+    await expect(labelCard).toContainText('Fêmur');
+    await expect(labelCard).toContainText('Femur');
+    await expect(labelCard).toContainText('Ósseo');
+    await expect(labelCard).toContainText('Lado direito');
 
-    // Aguarda conclusão da animação de foco (450 ms) + frames de projeção
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(650);
     await waitAnimationFrames(page, 4);
 
-    // Verifica aria-live atualizado
     await expect(page.getByTestId('live-announcer')).toContainText(
-      'Selecionado: Músculo bíceps braquial, Musculus biceps brachii, lado esquerdo',
+      'Selecionado: Fêmur, Femur, lado direito',
     );
 
-    // RF-08: etiqueta dentro da viewport e sem sobrepor cabeçalho, controles inferiores ou gaveta aberta
+    // RF-08: etiqueta dentro da viewport sem sobrepor cabeçalho, controles ou gaveta aberta
     const labelBox = await labelCard.boundingBox();
     const headerBox = await page.locator('header').boundingBox();
     const controlsBox = await page.getByTestId('layer-controls').boundingBox();
@@ -189,7 +223,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
       expect(labelBox.y + labelBox.height).toBeLessThanOrEqual(controlsBox.y + 2);
     }
 
-    // Linha SVG conectora visível com coordenadas válidas
+    // Linha SVG conectora visível com coordenadas finitas
     const connectorCoords = await page
       .locator('[data-testid="anatomy-label-overlay"] svg line')
       .evaluate((el) => ({
@@ -203,7 +237,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     expect(Number.isFinite(connectorCoords.x1)).toBe(true);
     expect(Number.isFinite(connectorCoords.x2)).toBe(true);
 
-    // Botão fechar [×] da etiqueta >= 44 x 44 px
+    // Botão fechar [×] >= 44 x 44 px
     const closeLabelBtn = labelCard.getByRole('button', {
       name: 'Fechar etiqueta',
     });
@@ -214,72 +248,106 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
       expect(closeBtnBox.height).toBeGreaterThanOrEqual(44);
     }
 
-    // Fecha a gaveta com Esc para evidência visual desobstruída do bíceps esquerdo (04)
+    // Fecha gaveta com Esc para evidência visual 04 (Fêmur — membro inferior)
     await page.keyboard.press('Escape');
     await expect(drawer).toHaveCount(0);
     await waitAnimationFrames(page, 4);
 
     await page.screenshot({
-      path: visualAuditPath('04-desktop-label-biceps-left.png'),
+      path: visualAuditPath('04-v2-desktop-focus-femur.png'),
     });
 
-    // Reabre gaveta e seleciona Escápula direita (foco posterior — evidência 05)
+    // 2) Cabeça e pescoço: filtra Cabeça/Pescoço e seleciona Mandíbula (evidência 05)
     await page
       .getByRole('button', { name: /Abrir lista de estruturas/i })
       .click();
     await expect(drawer).toBeVisible();
     await drawer
-      .getByRole('searchbox', { name: /Buscar estrutura/i })
-      .fill('escapula direita');
+      .getByRole('group', { name: 'Filtrar por região anatômica' })
+      .getByRole('button', { name: 'Cabeça/Pescoço (137)' })
+      .click();
     await drawer
-      .getByRole('button', { name: /Escápula/i })
+      .getByRole('searchbox', { name: /Buscar estrutura/i })
+      .fill('mandibula');
+    await drawer
+      .getByRole('button', { name: /Mandíbula/i })
       .first()
       .click();
 
-    await expect(labelCard).toContainText('Escápula');
-    await expect(labelCard).toContainText('Scapula');
-    await expect(labelCard).toContainText('Lado direito');
+    await expect(labelCard).toContainText('Mandíbula');
+    await expect(labelCard).toContainText('Mandibula');
+    await expect(labelCard).toContainText('Ósseo');
+    await expect(labelCard).toContainText('Linha média');
 
     await page.keyboard.press('Escape');
     await expect(drawer).toHaveCount(0);
-    await page.waitForTimeout(650);
+    await page.waitForTimeout(700);
     await waitAnimationFrames(page, 4);
 
     await page.screenshot({
-      path: visualAuditPath('05-desktop-posterior-scapula.png'),
+      path: visualAuditPath('05-v2-desktop-focus-skull-mandible.png'),
     });
 
-    // Reabre gaveta e seleciona Músculo braquial direito (âncora distal anterolateral — evidência 06)
+    // 3) Tronco / dorso posterior: filtra Tronco e seleciona Músculo trapézio direito (evidência 06)
     await page
       .getByRole('button', { name: /Abrir lista de estruturas/i })
       .click();
     await expect(drawer).toBeVisible();
     await drawer
-      .getByRole('searchbox', { name: /Buscar estrutura/i })
-      .fill('braquial direito');
+      .getByRole('group', { name: 'Filtrar por região anatômica' })
+      .getByRole('button', { name: 'Tronco (104)' })
+      .click();
     await drawer
-      .getByRole('button', { name: /Músculo braquial\s+Musculus brachialis/i })
+      .getByRole('searchbox', { name: /Buscar estrutura/i })
+      .fill('trapezio direito');
+    await drawer
+      .getByRole('button', { name: /Músculo trapézio/i })
       .first()
       .click();
 
-    await expect(labelCard).toContainText('Músculo braquial');
-    await expect(labelCard).toContainText('Musculus brachialis');
+    await expect(labelCard).toContainText('Músculo trapézio');
+    await expect(labelCard).toContainText('Musculus trapezius');
+    await expect(labelCard).toContainText('Muscular');
     await expect(labelCard).toContainText('Lado direito');
 
     await page.keyboard.press('Escape');
     await expect(drawer).toHaveCount(0);
-    await page.waitForTimeout(650);
+    await page.waitForTimeout(700);
     await waitAnimationFrames(page, 4);
 
     await page.screenshot({
-      path: visualAuditPath('06-desktop-label-brachialis-right.png'),
+      path: visualAuditPath('06-v2-desktop-focus-trapezius-posterior.png'),
     });
+
+    // 4) Membro superior: filtra M. Superior e valida seleção em PT-BR/Latim + fechamento via [×] e Esc
+    await page
+      .getByRole('button', { name: /Abrir lista de estruturas/i })
+      .click();
+    await expect(drawer).toBeVisible();
+    await drawer
+      .getByRole('group', { name: 'Filtrar por região anatômica' })
+      .getByRole('button', { name: 'M. Superior (152)' })
+      .click();
+    await drawer
+      .getByRole('searchbox', { name: /Buscar estrutura/i })
+      .fill('Musculus biceps brachii esquerdo');
+    await drawer
+      .getByRole('button', { name: /Músculo bíceps braquial/i })
+      .first()
+      .click();
+
+    await expect(labelCard).toContainText('Músculo bíceps braquial');
+    await expect(labelCard).toContainText('Musculus biceps brachii');
+    await expect(labelCard).toContainText('Lado esquerdo');
+
+    await page.keyboard.press('Escape'); // fecha gaveta
+    await expect(drawer).toHaveCount(0);
 
     // Fechar etiqueta pelo botão [×]
     await labelCard.getByRole('button', { name: 'Fechar etiqueta' }).click();
     await expect(labelCard).toHaveAttribute('data-active', 'false');
 
-    // Re-selecionar e fechar etiqueta via Esc
+    // Re-selecionar e limpar etiqueta via Esc
     await page
       .getByRole('button', { name: /Abrir lista de estruturas/i })
       .click();
@@ -298,7 +366,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     expectZeroRuntimeErrors(diag);
   });
 
-  test('interação direta no canvas: órbita, teclado (Setas, +, -, R) e hover/clique sobre o modelo', async ({
+  test('interação direta no canvas: órbita, teclado (Setas, +, -, R) e hover/clique sobre o modelo v2', async ({
     page,
   }) => {
     const diag = attachDiagnostics(page);
@@ -349,7 +417,10 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
       }
     }
 
-    expect(hitPoint, 'Esperado encontrar ao menos um ponto de hover sobre malha 3D renderizada').not.toBeNull();
+    expect(
+      hitPoint,
+      'Esperado encontrar ao menos um ponto de hover sobre malha 3D renderizada',
+    ).not.toBeNull();
     await expect(labelCard).toHaveAttribute('data-active', 'true');
     const hoveredId = await labelCard.getAttribute('data-anatomy-id');
     expect(hoveredId).toMatch(/^(bone|muscle)\./);
@@ -367,7 +438,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     expectZeroRuntimeErrors(diag);
   });
 
-  test('modais Como navegar e Créditos validam foco inicial, atribuição CC BY-SA 2.1 JP e retorno de foco com Esc', async ({
+  test('modais Como navegar e Créditos validam foco inicial, v2 (575 estruturas / 635 malhas), CC BY-SA 2.1 JP e retorno de foco com Esc', async ({
     page,
   }) => {
     const diag = attachDiagnostics(page);
@@ -391,7 +462,7 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     await expect(helpModal).toHaveCount(0);
     await expect(helpBtn).toBeFocused();
 
-    // Modal Créditos
+    // Modal Créditos v2
     const creditsBtn = page.getByRole('button', {
       name: /Créditos, licenças e escopo/i,
     });
@@ -411,11 +482,13 @@ test.describe('Anatomia 3D — Desktop (1280x720)', () => {
     expect(modalText).toContain('BodyParts3D');
     expect(modalText).toContain('DBCLS');
     expect(modalText).toContain('CC BY-SA 2.1 JP');
-    expect(modalText).toContain('v1');
-    expect(modalText).toContain('22 estruturas');
+    expect(modalText).toContain('v2');
+    expect(modalText).toContain('575 estruturas');
+    expect(modalText).toContain('201 ossos');
+    expect(modalText).toContain('374 músculos');
+    expect(modalText).toContain('635 malhas');
     expect(modalText).toContain('pending_review');
     expect(modalText).toMatch(/estritamente educacional/i);
-    expect(modalText).not.toMatch(/corpo inteiro/i);
 
     const licenseLink = creditsModal.getByRole('link', {
       name: /CC BY-SA 2\.1 JP/i,

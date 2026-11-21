@@ -5,6 +5,7 @@ import styles from './StatusOverlay.module.css';
 export interface StatusOverlayProps {
   readonly webglStatus: WebGLStatus;
   readonly loadState: ViewerLoadState;
+  readonly totalStructures?: number;
   readonly onRetrySystem: (system: AnatomySystem) => void;
   readonly onRetryAll: () => void;
   readonly onOpenDrawer: () => void;
@@ -18,6 +19,7 @@ export interface StatusOverlayProps {
 export function StatusOverlay({
   webglStatus,
   loadState,
+  totalStructures,
   onRetrySystem,
   onRetryAll,
   onOpenDrawer,
@@ -56,8 +58,11 @@ export function StatusOverlay({
             gráfica está ativada nas configurações ou utilize um navegador atualizado.
           </p>
           <p className={styles.cardText}>
-            Você ainda pode consultar e pesquisar todas as 22 estruturas anatômicas
-            desta versão na lista textual.
+            Você ainda pode consultar e pesquisar{' '}
+            {totalStructures && totalStructures > 0
+              ? `todas as ${totalStructures} estruturas anatômicas desta versão`
+              : 'todas as estruturas anatômicas desta versão'}{' '}
+            na lista textual.
           </p>
           <div className={styles.actions}>
             <button

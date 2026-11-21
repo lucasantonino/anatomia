@@ -3,6 +3,7 @@ import { resolveNetworkAssetUrl } from '../../src/scene/AssetLoader';
 import {
   ANATOMY_ID_REGEX,
   AnatomyIdSchema,
+  AnatomyRegionSchema,
   BoundingBoxSchema,
   CoverageMatrixSchema,
   LABEL_ANCHOR_BBOX_TOLERANCE_METERS,
@@ -13,6 +14,7 @@ import {
   isPointWithinBoundingBox,
   isSafeAssetUrl,
   isValidIsoDate,
+  type AnatomyRegion,
   type BoundingBox,
   type CoverageMatrix,
   type Manifest,
@@ -341,7 +343,57 @@ describe('ManifestSchema', () => {
   });
 });
 
+describe('AnatomyRegionSchema', () => {
+  it.each<AnatomyRegion>(['head_neck', 'trunk', 'upper_limb', 'lower_limb'])(
+    'aceita região anatômica canônica válida: %s',
+    (region) => {
+      expect(AnatomyRegionSchema.safeParse(region).success).toBe(true);
+    },
+  );
+
+  it.each([
+    'head',
+    'neck',
+    'thorax',
+    'abdomen',
+    'pelvis',
+    'arm',
+    'leg',
+    'UPPER_LIMB',
+    'lower-limb',
+    'full_body',
+    '',
+  ])('rejeita região anatômica inválida: %s', (region) => {
+    expect(AnatomyRegionSchema.safeParse(region).success).toBe(false);
+  });
+});
+
 describe('StructureMetadataSchema e MetadataDocumentSchema', () => {
+  it.each<AnatomyRegion>(['head_neck', 'trunk', 'upper_limb', 'lower_limb'])(
+    'aceita StructureMetadata com região canônica válida: %s',
+    (region) => {
+      const structure: StructureMetadata = {
+        ...createValidBoneStructure(),
+        region,
+      };
+      expect(StructureMetadataSchema.safeParse(structure).success).toBe(true);
+    },
+  );
+
+  it('rejeita StructureMetadata com região fora do enum canônico', () => {
+    const invalidRegion = {
+      ...createValidBoneStructure(),
+      region: 'thorax',
+    };
+    expect(StructureMetadataSchema.safeParse(invalidRegion).success).toBe(false);
+
+    const emptyRegion = {
+      ...createValidMuscleStructure(),
+      region: '',
+    };
+    expect(StructureMetadataSchema.safeParse(emptyRegion).success).toBe(false);
+  });
+
   it('aceita estrutura pending_review com reviewedAt null, reviewedBy unassigned, focusDirection opcional e campos P1 opcionais', () => {
     const structure: StructureMetadata = {
       ...createValidMuscleStructure(),
@@ -560,6 +612,40 @@ describe('CoverageMatrixSchema', () => {
     });
 
     expect(CoverageMatrixSchema.safeParse(matrix).success).toBe(true);
+  });
+
+  it('aceita CoverageStructure com region opcional (omitido ou válido) e rejeita region inválido', () => {
+    const withRegion = createValidCoverageMatrix();
+    withRegion.structures[0]!.region = 'upper_limb';
+    withRegion.structures.push({
+      anatomyId: 'bone.femur.right',
+      system: 'skeletal',
+      laterality: 'right',
+      region: 'lower_limb',
+      presentInAsset: true,
+      detailLevel: 'segmentado_por_estrutura_e_subpartes',
+      meshNodes: ['bone.femur.right'],
+      fmaIds: ['FMA9611'],
+      reviewStatus: 'pending_review',
+    });
+    expect(CoverageMatrixSchema.safeParse(withRegion).success).toBe(true);
+
+    // Sem region (compatibilidade v1)
+    const withoutRegion = createValidCoverageMatrix();
+    expect(withoutRegion.structures[0]?.region).toBeUndefined();
+    expect(CoverageMatrixSchema.safeParse(withoutRegion).success).toBe(true);
+
+    // Com region inválido
+    const badRegionMatrix = {
+      ...createValidCoverageMatrix(),
+      structures: [
+        {
+          ...createValidCoverageMatrix().structures[0]!,
+          region: 'pelvis',
+        },
+      ],
+    };
+    expect(CoverageMatrixSchema.safeParse(badRegionMatrix).success).toBe(false);
   });
 
   it('rejeita estrutura com presentInAsset=true e meshNodes vazio', () => {

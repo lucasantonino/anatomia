@@ -7,21 +7,21 @@ import {
   waitForViewerFullyLoaded,
 } from './helpers';
 
-test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
-  test('falha isolada em muscular-v1.glb mantém esqueleto interativo e recupera com Tentar novamente', async ({
+test.describe('Anatomia 3D v2 — Resiliência e Falhas Simuladas (RF-09)', () => {
+  test('falha isolada em muscular-v2.glb mantém esqueleto interativo e recupera com Tentar novamente', async ({
     page,
   }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));
 
     let muscularAttempts = 0;
-    await page.route('**/assets/v1/muscular-v1.glb', async (route) => {
+    await page.route('**/assets/v2/muscular-v2.glb', async (route) => {
       muscularAttempts += 1;
       if (muscularAttempts === 1) {
         await route.fulfill({
           status: 500,
           contentType: 'text/plain',
-          body: 'Simulated failure on muscular-v1.glb',
+          body: 'Simulated failure on muscular-v2.glb',
         });
         return;
       }
@@ -30,14 +30,14 @@ test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
 
     await page.goto('/');
 
-    // Overlay bloqueante inicial some pois o esqueleto carrega com sucesso
+    // Overlay bloqueante inicial some pois o esqueleto v2 carrega com sucesso
     await expect(page.getByTestId('status-initial-loading')).toHaveCount(0, {
-      timeout: 30_000,
+      timeout: 45_000,
     });
 
     // Banner não destrutivo de falha parcial muscular aparece
     const partialBanner = page.getByTestId('status-partial-error-muscular');
-    await expect(partialBanner).toBeVisible({ timeout: 20_000 });
+    await expect(partialBanner).toBeVisible({ timeout: 25_000 });
     await expect(partialBanner).toContainText(
       /não foi possível carregar a camada muscular/i,
     );
@@ -57,23 +57,21 @@ test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
     const drawer = page.getByTestId('structure-drawer');
     await drawer
       .getByRole('searchbox', { name: /Buscar estrutura/i })
-      .fill('clavicula direita');
+      .fill('femur direito');
     await drawer
-      .getByRole('button', { name: /Clavícula/i })
+      .getByRole('button', { name: /Fêmur/i })
       .first()
       .click();
-    await expect(page.getByTestId('anatomy-label-card')).toContainText(
-      'Clavícula',
-    );
+    await expect(page.getByTestId('anatomy-label-card')).toContainText('Fêmur');
     await page.keyboard.press('Escape');
 
-    // Clicar em Tentar novamente carrega a musculatura sem recarregar a página
+    // Clicar em Tentar novamente carrega a musculatura v2 sem recarregar a página
     await partialBanner
       .getByRole('button', { name: 'Tentar novamente' })
       .click();
-    await expect(partialBanner).toHaveCount(0, { timeout: 30_000 });
+    await expect(partialBanner).toHaveCount(0, { timeout: 45_000 });
     await expect(page.getByTestId('status-muscular-loading')).toHaveCount(0, {
-      timeout: 30_000,
+      timeout: 45_000,
     });
     expect(muscularAttempts).toBe(2);
 
@@ -88,7 +86,7 @@ test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
       .click();
     await drawer
       .getByRole('searchbox', { name: /Buscar estrutura/i })
-      .fill('biceps esquerdo');
+      .fill('biceps braquial esquerdo');
     await drawer
       .getByRole('button', { name: /Músculo bíceps braquial/i })
       .first()
@@ -100,14 +98,14 @@ test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('falha total em manifest.json exibe cartão de erro e recupera toda a cena com Tentar novamente', async ({
+  test('falha total em manifest.json v2 exibe cartão de erro e recupera toda a cena com Tentar novamente', async ({
     page,
   }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));
 
     let manifestAttempts = 0;
-    await page.route('**/assets/v1/manifest.json', async (route) => {
+    await page.route('**/assets/v2/manifest.json', async (route) => {
       manifestAttempts += 1;
       if (manifestAttempts === 1) {
         await route.fulfill({
@@ -123,7 +121,7 @@ test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
     await page.goto('/');
 
     const totalError = page.getByTestId('status-total-error');
-    await expect(totalError).toBeVisible({ timeout: 20_000 });
+    await expect(totalError).toBeVisible({ timeout: 25_000 });
     await expect(totalError).toContainText(
       'Não foi possível carregar o modelo anatômico',
     );
@@ -134,9 +132,11 @@ test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
 
     await totalError.getByRole('button', { name: 'Tentar novamente' }).click();
 
-    await expect(totalError).toHaveCount(0, { timeout: 30_000 });
+    await expect(totalError).toHaveCount(0, { timeout: 45_000 });
     await waitForViewerFullyLoaded(page);
     expect(manifestAttempts).toBe(2);
+
+    await expect(page.locator('header')).toContainText('v2');
 
     const samePage = await page.evaluate(
       () => (window as unknown as Record<string, unknown>).__manifestRetry,
@@ -149,7 +149,7 @@ test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('simulação de webglcontextlost exibe aviso com lista acessível e webglcontextrestored retoma a cena', async ({
+  test('simulação de webglcontextlost exibe aviso com lista acessível (575 estruturas) e webglcontextrestored retoma a cena', async ({
     page,
   }) => {
     const diag = attachDiagnostics(page);
@@ -183,7 +183,12 @@ test.describe('Anatomia 3D — Resiliência e Falhas Simuladas (RF-09)', () => {
       .click();
     const drawer = page.getByTestId('structure-drawer');
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByRole('button', { name: 'Todas (22)' })).toBeVisible();
+    const systemGroup = drawer.getByRole('group', {
+      name: 'Filtrar por sistema anatômico',
+    });
+    await expect(
+      systemGroup.getByRole('button', { name: 'Todas (575)' }),
+    ).toBeVisible();
 
     await page.keyboard.press('Escape');
     await expect(drawer).toHaveCount(0);

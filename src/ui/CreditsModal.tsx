@@ -3,12 +3,25 @@ import type {
   CoverageMatrix,
   Manifest,
   MetadataDocument,
+  ReviewStatus,
 } from '../core/schema/anatomy';
 import { useDialogFocus } from './useDialogFocus';
 import styles from './CreditsModal.module.css';
 
+const DEFAULT_SOURCE_NAME = 'BodyParts3D (DBCLS)';
+const DEFAULT_LICENSE_IDENTIFIER = 'CC-BY-SA-2.1-JP';
+const DEFAULT_ATTRIBUTION_TEXT =
+  'BodyParts3D, Copyright © 2008 Life Science Integrated Database Center (DBCLS), licenciado sob Creative Commons Attribution-ShareAlike 2.1 Japan (CC BY-SA 2.1 JP).';
 const DEFAULT_LICENSE_URL =
   'https://creativecommons.org/licenses/by-sa/2.1/jp/deed.en';
+
+function formatLicenseIdentifier(spdxOrIdentifier: string): string {
+  if (spdxOrIdentifier.startsWith('CC-BY-SA-')) {
+    const suffix = spdxOrIdentifier.slice('CC-BY-SA-'.length).replace(/-/g, ' ');
+    return `CC BY-SA ${suffix}`;
+  }
+  return spdxOrIdentifier;
+}
 
 export interface CreditsModalProps {
   readonly open: boolean;
@@ -21,10 +34,9 @@ export interface CreditsModalProps {
 
 /**
  * Modal "Créditos, Licenças e Escopo" (docs/dossie-licenciamento.md Seção 2):
- * exibe integralmente a atribuição obrigatória BodyParts3D (CC BY-SA 2.1 JP),
- * modificações realizadas, versões ativas do manifesto, escopo regional honesto
- * (22 estruturas da cintura escapular e membro superior), status pending_review
- * e aviso educacional explícito.
+ * exibe dinamicamente a atribuição obrigatória e licença do manifesto ativo,
+ * modificações realizadas, versões ativas, declaração oficial de cobertura,
+ * status de revisão científica derivado dos metadados e aviso educacional.
  */
 export function CreditsModal({
   open,
@@ -51,22 +63,50 @@ export function CreditsModal({
     return null;
   }
 
-  const assetVersion = manifest?.assetVersion ?? 'v1';
-  const metadataVersion = manifest?.metadataVersion ?? 'v1';
-  const coverageMatrixVersion = manifest?.coverageMatrixVersion ?? 'v1';
-  const licenseUrl = manifest?.license.licenseUrl ?? DEFAULT_LICENSE_URL;
+  const assetVersion =
+    manifest?.assetVersion ??
+    metadata?.assetVersion ??
+    coverageMatrix?.assetVersion ??
+    'v1';
+  const metadataVersion =
+    manifest?.metadataVersion ?? metadata?.metadataVersion ?? 'v1';
+  const coverageMatrixVersion =
+    manifest?.coverageMatrixVersion ??
+    coverageMatrix?.coverageMatrixVersion ??
+    'v1';
   const terminologyReference =
     metadata?.terminologyReference ?? 'Terminologia Anatomica (TA2) / PT-BR';
 
-  const presentStructures =
+  const sourceName = manifest?.license.sourceName ?? DEFAULT_SOURCE_NAME;
+  const licenseIdentifier =
+    manifest?.license.spdxOrIdentifier ?? DEFAULT_LICENSE_IDENTIFIER;
+  const licenseDisplay = formatLicenseIdentifier(licenseIdentifier);
+  const attributionText =
+    manifest?.license.attributionText ?? DEFAULT_ATTRIBUTION_TEXT;
+  const licenseUrl = manifest?.license.licenseUrl ?? DEFAULT_LICENSE_URL;
+
+  const totalMeshes = manifest
+    ? manifest.systems.skeletal.meshCount + manifest.systems.muscular.meshCount
+    : 0;
+
+  const presentCoverageStructures =
     coverageMatrix?.structures.filter((item) => item.presentInAsset) ?? null;
-  const totalStructures = presentStructures ? presentStructures.length : 22;
-  const skeletalCount = presentStructures
-    ? presentStructures.filter((item) => item.system === 'skeletal').length
-    : 10;
-  const muscularCount = presentStructures
-    ? presentStructures.filter((item) => item.system === 'muscular').length
-    : 12;
+  const countSource = presentCoverageStructures ?? metadata?.structures ?? null;
+
+  const totalStructures = countSource ? countSource.length : 0;
+  const skeletalCount = countSource
+    ? countSource.filter((item) => item.system === 'skeletal').length
+    : 0;
+  const muscularCount = countSource
+    ? countSource.filter((item) => item.system === 'muscular').length
+    : 0;
+
+  const reviewStatus: ReviewStatus =
+    metadata &&
+    metadata.structures.length > 0 &&
+    metadata.structures.every((structure) => structure.review.status === 'approved')
+      ? 'approved'
+      : 'pending_review';
 
   const handleBackdropClick = (event: MouseEvent<HTMLDivElement>): void => {
     if (event.target === event.currentTarget) {
@@ -111,23 +151,17 @@ export function CreditsModal({
             </h3>
             <p className={styles.paragraph}>
               <strong>Modelos anatômicos 3D:</strong> derivados de{' '}
-              <em>
-                BodyParts3D, Copyright © 2008 Life Science Integrated Database Center
-                (DBCLS)
-              </em>
-              , licenciados sob{' '}
-              <strong>
-                Creative Commons Attribution-ShareAlike 2.1 Japan (CC BY-SA 2.1 JP)
-              </strong>
-              .
+              <strong>{sourceName}</strong> — <em>{attributionText}</em> Licença:{' '}
+              <strong>{licenseDisplay}</strong>.
             </p>
             <p className={styles.paragraph}>
               <strong>Modificações realizadas nesta versão ({assetVersion}):</strong>{' '}
-              recorte regional da cintura escapular e membro superior bilateral (36
-              malhas), conversão de coordenadas para glTF 2.0 (Y-up em metros), soldagem
-              de vértices, recálculo de normais, simplificação geométrica e compressão
-              Meshopt. Os arquivos <code>.glb</code> resultantes são disponibilizados sob
-              termos compatíveis <strong>CC BY-SA 2.1 JP</strong>.
+              segmentação anatômica
+              {totalMeshes > 0 ? ` (${totalMeshes} malhas)` : ''}, conversão de
+              coordenadas para glTF 2.0 (Y-up em metros), soldagem de vértices,
+              recálculo de normais, simplificação geométrica e compressão Meshopt. Os
+              arquivos <code>.glb</code> resultantes são disponibilizados sob termos
+              compatíveis <strong>{licenseDisplay}</strong>.
             </p>
             <div>
               <a
@@ -136,7 +170,7 @@ export function CreditsModal({
                 rel="noopener noreferrer"
                 className={styles.licenseLink}
               >
-                Consultar licença CC BY-SA 2.1 JP ({licenseUrl})
+                Consultar licença {licenseDisplay} ({licenseUrl})
               </a>
             </div>
           </section>
@@ -168,20 +202,36 @@ export function CreditsModal({
             <h3 id="credits-scope-title" className={styles.sectionTitle}>
               Transparência de cobertura e revisão científica
             </h3>
+            {totalStructures > 0 ? (
+              <p className={styles.paragraph}>
+                <strong>Escopo anatômico desta versão ({assetVersion}):</strong>{' '}
+                contempla {totalStructures} estruturas ({skeletalCount} ossos e{' '}
+                {muscularCount} músculos), conforme a matriz de cobertura publicada.
+              </p>
+            ) : (
+              <p className={styles.paragraph}>
+                <strong>Escopo anatômico desta versão ({assetVersion}):</strong>{' '}
+                carregando declaração oficial da matriz de cobertura publicada.
+              </p>
+            )}
+            {coverageMatrix?.scopeStatement ? (
+              <p className={`${styles.paragraph} ${styles.secondaryText}`}>
+                {coverageMatrix.scopeStatement}
+              </p>
+            ) : null}
             <p className={styles.paragraph}>
-              <strong>Escopo anatômico desta versão ({assetVersion}):</strong> exibe
-              exclusivamente {totalStructures} estruturas ({skeletalCount} ossos e{' '}
-              {muscularCount} músculos) da cintura escapular e do membro superior
-              bilateral, conforme a matriz de cobertura publicada.
-            </p>
-            <p className={`${styles.paragraph} ${styles.secondaryText}`}>
-              Não contempla ossos da mão, manguito rotador, cabeça, coluna vertebral,
-              caixa torácica óssea, abdome ou membros inferiores nesta versão regional.
-            </p>
-            <p className={styles.paragraph}>
-              <strong>Status de revisão científica atual:</strong> pendente de validação
-              por revisor anatômico{' '}
-              <span className={styles.reviewBadge}>pending_review</span>.
+              <strong>Status de revisão científica atual:</strong>{' '}
+              {reviewStatus === 'approved'
+                ? 'validado por revisor anatômico'
+                : 'pendente de validação por revisor anatômico'}{' '}
+              <span
+                className={`${styles.reviewBadge} ${
+                  reviewStatus === 'approved' ? styles.reviewBadgeApproved : ''
+                }`}
+              >
+                {reviewStatus}
+              </span>
+              .
             </p>
           </section>
 

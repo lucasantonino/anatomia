@@ -1,4 +1,5 @@
 import type {
+  AnatomyRegion,
   AnatomySystem,
   Laterality,
   MetadataDocument,
@@ -6,6 +7,7 @@ import type {
 } from '../schema/anatomy';
 
 export type AnatomySystemFilter = AnatomySystem | 'all';
+export type AnatomyRegionFilter = AnatomyRegion | 'all';
 
 export interface SystemStructureCounts {
   readonly all: number;
@@ -13,11 +15,20 @@ export interface SystemStructureCounts {
   readonly skeletal: number;
 }
 
+export type RegionStructureCounts = Record<AnatomyRegionFilter, number>;
+
 export interface AnatomyRegistryVersion {
   readonly assetVersion: string;
   readonly metadataVersion: string;
   readonly terminologyReference: string;
 }
+
+const REGION_SEARCH_TERMS: Record<AnatomyRegion, string> = {
+  head_neck: 'cabeca pescoco head_neck head neck',
+  trunk: 'tronco torax coluna dorso abdome pelve trunk',
+  upper_limb: 'membro superior braco antebraco mao ombro upper_limb upper limb',
+  lower_limb: 'membro inferior coxa perna pe quadril lower_limb lower limb',
+};
 
 const LATERALITY_SEARCH_TERMS: Record<Laterality, readonly string[]> = {
   right: ['direito', 'direita', 'lado direito', 'right'],
@@ -67,6 +78,7 @@ interface IndexedStructureEntry {
   readonly anatomyIdNormalized: string;
   readonly anatomyIdSpaced: string;
   readonly lateralityHaystack: string;
+  readonly regionHaystack: string;
   readonly fullHaystack: string;
 }
 
@@ -82,6 +94,7 @@ function buildIndexedEntry(structure: StructureMetadata): IndexedStructureEntry 
     structure.anatomyId.replace(/[._]/g, ' '),
   );
   const lateralityHaystack = LATERALITY_SEARCH_TERMS[structure.laterality].join(' ');
+  const regionHaystack = REGION_SEARCH_TERMS[structure.region];
   const fullHaystack = [
     ptBr,
     la,
@@ -89,6 +102,7 @@ function buildIndexedEntry(structure: StructureMetadata): IndexedStructureEntry 
     anatomyIdNormalized,
     anatomyIdSpaced,
     lateralityHaystack,
+    regionHaystack,
   ].join(' ');
 
   return {
@@ -100,6 +114,7 @@ function buildIndexedEntry(structure: StructureMetadata): IndexedStructureEntry 
     anatomyIdNormalized,
     anatomyIdSpaced,
     lateralityHaystack,
+    regionHaystack,
     fullHaystack,
   };
 }
@@ -176,6 +191,16 @@ function computeSearchRank(
   return 30;
 }
 
+function createZeroRegionCounts(): Record<AnatomyRegionFilter, number> {
+  return {
+    all: 0,
+    head_neck: 0,
+    trunk: 0,
+    upper_limb: 0,
+    lower_limb: 0,
+  };
+}
+
 export class AnatomyRegistry {
   public readonly version: AnatomyRegistryVersion;
   public readonly byAnatomyId: ReadonlyMap<string, StructureMetadata>;
@@ -183,6 +208,10 @@ export class AnatomyRegistry {
 
   private readonly entries: readonly IndexedStructureEntry[];
   private readonly counts: SystemStructureCounts;
+  private readonly countsByRegion: Record<
+    AnatomySystemFilter,
+    Readonly<RegionStructureCounts>
+  >;
 
   public constructor(
     structures: readonly StructureMetadata[],
@@ -200,6 +229,9 @@ export class AnatomyRegistry {
 
     let muscularCount = 0;
     let skeletalCount = 0;
+    const allRegionCounts = createZeroRegionCounts();
+    const muscularRegionCounts = createZeroRegionCounts();
+    const skeletalRegionCounts = createZeroRegionCounts();
 
     for (const structure of structures) {
       if (idMap.has(structure.anatomyId)) {
@@ -218,10 +250,17 @@ export class AnatomyRegistry {
         nodeMap.set(meshNode, structure.anatomyId);
       }
 
+      allRegionCounts.all += 1;
+      allRegionCounts[structure.region] += 1;
+
       if (structure.system === 'muscular') {
         muscularCount += 1;
+        muscularRegionCounts.all += 1;
+        muscularRegionCounts[structure.region] += 1;
       } else {
         skeletalCount += 1;
+        skeletalRegionCounts.all += 1;
+        skeletalRegionCounts[structure.region] += 1;
       }
 
       indexed.push(buildIndexedEntry(structure));
@@ -236,6 +275,11 @@ export class AnatomyRegistry {
       all: indexed.length,
       muscular: muscularCount,
       skeletal: skeletalCount,
+    };
+    this.countsByRegion = {
+      all: allRegionCounts,
+      muscular: muscularRegionCounts,
+      skeletal: skeletalRegionCounts,
     };
   }
 
@@ -267,12 +311,19 @@ export class AnatomyRegistry {
     return this.byMeshNode.has(meshNode);
   }
 
-  public getAll(filterSystem: AnatomySystemFilter = 'all'): StructureMetadata[] {
-    if (filterSystem === 'all') {
+  public getAll(
+    filterSystem: AnatomySystemFilter = 'all',
+    filterRegion: AnatomyRegionFilter = 'all',
+  ): StructureMetadata[] {
+    if (filterSystem === 'all' && filterRegion === 'all') {
       return this.entries.map((entry) => entry.structure);
     }
     return this.entries
-      .filter((entry) => entry.structure.system === filterSystem)
+      .filter(
+        (entry) =>
+          (filterSystem === 'all' || entry.structure.system === filterSystem) &&
+          (filterRegion === 'all' || entry.structure.region === filterRegion),
+      )
       .map((entry) => entry.structure);
   }
 
@@ -280,13 +331,20 @@ export class AnatomyRegistry {
     return this.counts;
   }
 
+  public getCountByRegion(
+    filterSystem: AnatomySystemFilter = 'all',
+  ): RegionStructureCounts {
+    return this.countsByRegion[filterSystem];
+  }
+
   public search(
     query: string,
     filterSystem: AnatomySystemFilter = 'all',
+    filterRegion: AnatomyRegionFilter = 'all',
   ): StructureMetadata[] {
     const normalizedQuery = normalizeSearchText(query);
     if (normalizedQuery.length === 0) {
-      return this.getAll(filterSystem);
+      return this.getAll(filterSystem, filterRegion);
     }
 
     const tokens = normalizedQuery.split(' ').filter((token) => token.length > 0);
@@ -301,6 +359,9 @@ export class AnatomyRegistry {
 
     for (const entry of this.entries) {
       if (filterSystem !== 'all' && entry.structure.system !== filterSystem) {
+        continue;
+      }
+      if (filterRegion !== 'all' && entry.structure.region !== filterRegion) {
         continue;
       }
 

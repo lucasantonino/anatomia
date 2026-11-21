@@ -107,6 +107,14 @@ function computeStructureFocusDirection(structure: StructureMetadata): THREE.Vec
   return new THREE.Vector3(lateralX, 0.14, 0.88).normalize();
 }
 
+function disposeObjectGeometries(root: THREE.Object3D): void {
+  root.traverse((object) => {
+    if (object instanceof THREE.Mesh) {
+      object.geometry?.dispose();
+    }
+  });
+}
+
 function disposeObjectHierarchy(root: THREE.Object3D): void {
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) {
@@ -163,8 +171,15 @@ export class AnatomyEngine {
   private mounted = false;
   private webglReady = false;
   private hasFramedInitialModel = false;
+  private userInteractedWithCamera = false;
   private contextLost = false;
   private pausedForVisibility = false;
+
+  // Insets de interface para centralizar o enquadramento na zona útil visível
+  private safeInsets: SafeInsets = { top: 64, right: 12, bottom: 132, left: 12 };
+  private framingTopInset = 64;
+  private framingBottomInset = 132;
+  private hasReceivedSafeInsets = false;
 
   // Enquadramento padrão e limites espaciais derivados da bounding sphere real
   private readonly modelCenter = new THREE.Vector3(0, 0, 0);
@@ -258,6 +273,7 @@ export class AnatomyEngine {
       typeof document !== 'undefined' && document.hidden === true;
     this.adaptiveReducedDpr = false;
     this.hasFramedInitialModel = false;
+    this.userInteractedWithCamera = false;
     this.lastFrameTimeMs = 0;
     this.emaFrameDeltaMs = 16.67;
     this.lowFpsAccumulatedMs = 0;
@@ -325,8 +341,8 @@ export class AnatomyEngine {
     controls.dampingFactor = ORBIT_DAMPING_FACTOR;
     controls.minPolarAngle = ORBIT_MIN_POLAR_RAD;
     controls.maxPolarAngle = ORBIT_MAX_POLAR_RAD;
-    controls.minDistance = Math.max(0.15, this.modelRadius * 0.6);
-    controls.maxDistance = Math.max(2.0, this.modelRadius * 5.0);
+    controls.minDistance = Math.max(0.12, this.modelRadius * 0.18);
+    controls.maxDistance = Math.max(2.5, this.modelRadius * 4.5);
     controls.enablePan = true;
     controls.screenSpacePanning = true;
     controls.target.copy(this.defaultCameraTarget);
@@ -395,7 +411,41 @@ export class AnatomyEngine {
   }
 
   public setSafeInsets(insets: Partial<SafeInsets>): void {
-    this.labelProjector.setSafeInsets(insets);
+    const nextTop = Math.max(0, insets.top ?? this.safeInsets.top);
+    const nextRight = Math.max(0, insets.right ?? this.safeInsets.right);
+    const nextBottom = Math.max(0, insets.bottom ?? this.safeInsets.bottom);
+    const nextLeft = Math.max(0, insets.left ?? this.safeInsets.left);
+
+    this.safeInsets = {
+      top: nextTop,
+      right: nextRight,
+      bottom: nextBottom,
+      left: nextLeft,
+    };
+    this.labelProjector.setSafeInsets(this.safeInsets);
+
+    let framingInsetsChanged = false;
+    if (!this.hasReceivedSafeInsets) {
+      this.hasReceivedSafeInsets = true;
+      this.framingTopInset = nextTop;
+      this.framingBottomInset = nextBottom;
+      framingInsetsChanged = true;
+    } else {
+      // Expande a margem de enquadramento se o cabeçalho/dock crescer (ex.: layout/fontes),
+      // mas evita saltar a câmera quando o dock encolhe ao alternar Ambos -> Ossos (RF-03).
+      if (nextTop > this.framingTopInset) {
+        this.framingTopInset = nextTop;
+        framingInsetsChanged = true;
+      }
+      if (nextBottom > this.framingBottomInset) {
+        this.framingBottomInset = nextBottom;
+        framingInsetsChanged = true;
+      }
+    }
+
+    if (framingInsetsChanged && this.hasFramedInitialModel) {
+      this.updateModelBoundsAndFraming(!this.userInteractedWithCamera);
+    }
   }
 
   /**
@@ -405,6 +455,8 @@ export class AnatomyEngine {
     if (!this.camera || !this.controls) {
       return;
     }
+
+    this.userInteractedWithCamera = false;
 
     if (prefersReducedMotion()) {
       this.cancelCameraAnimation();
@@ -435,6 +487,8 @@ export class AnatomyEngine {
     if (!structure) {
       return;
     }
+
+    this.userInteractedWithCamera = true;
 
     const { min, max } = structure.boundingBox;
     const target = new THREE.Vector3(
@@ -481,6 +535,7 @@ export class AnatomyEngine {
     if (!this.camera || !this.controls) {
       return;
     }
+    this.userInteractedWithCamera = true;
     this.cancelCameraAnimation();
 
     this.tmpOffset.copy(this.camera.position).sub(this.controls.target);
@@ -503,6 +558,7 @@ export class AnatomyEngine {
     if (!this.camera || !this.controls) {
       return;
     }
+    this.userInteractedWithCamera = true;
     this.cancelCameraAnimation();
 
     const distance = this.camera.position.distanceTo(this.controls.target);
@@ -529,6 +585,7 @@ export class AnatomyEngine {
     if (!this.camera || !this.controls || !Number.isFinite(scaleFactor) || scaleFactor <= 0) {
       return;
     }
+    this.userInteractedWithCamera = true;
     this.cancelCameraAnimation();
 
     this.tmpOffset.copy(this.camera.position).sub(this.controls.target);
@@ -596,11 +653,11 @@ export class AnatomyEngine {
       return;
     }
 
-    // Remove eventual versão anterior (ex.: após retry) sem vazar recursos GPU
+    // Remove eventual versão anterior (ex.: após retry) sem descartar materiais compartilhados
     const previousRoot = this.systemRoots[asset.system];
     if (previousRoot) {
       this.scene.remove(previousRoot);
-      disposeObjectHierarchy(previousRoot);
+      disposeObjectGeometries(previousRoot);
     }
 
     this.materialManager.registerSystemMeshes(
@@ -637,25 +694,50 @@ export class AnatomyEngine {
 
     const sphere = new THREE.Sphere();
     box.getBoundingSphere(sphere);
+    const boxCenter = new THREE.Vector3();
+    box.getCenter(boxCenter);
     const size = new THREE.Vector3();
     box.getSize(size);
 
-    this.modelCenter.copy(sphere.center);
+    this.modelCenter.copy(boxCenter);
     this.modelRadius = Math.max(0.2, sphere.radius);
-
-    this.controls.minDistance = Math.max(0.15, this.modelRadius * 0.6);
-    this.controls.maxDistance = Math.max(2.0, this.modelRadius * 5.0);
 
     const width = Math.max(1, this.container?.clientWidth ?? 1280);
     const height = Math.max(1, this.container?.clientHeight ?? 720);
-    const aspect = Math.max(0.45, width / height);
+    const aspect = Math.max(0.35, width / height);
     const halfFovRad = THREE.MathUtils.degToRad(this.camera.fov * 0.5);
+    const tanHalfFov = Math.tan(halfFovRad);
 
-    const distVertical = (size.y * 0.5) / Math.tan(halfFovRad);
-    const distHorizontal = (size.x * 0.5) / (Math.tan(halfFovRad) * aspect);
-    const defaultDistance = Math.max(distVertical, distHorizontal, this.modelRadius * 1.45) * 1.38;
+    const usableHeightPx = Math.max(
+      height * 0.42,
+      height - this.framingTopInset - this.framingBottomInset,
+    );
+    const usableFractionY = Math.min(1, usableHeightPx / height);
+    const distVertical =
+      ((size.y * 1.12) / (2 * tanHalfFov)) / usableFractionY;
 
-    const targetYOffset = aspect >= 1 ? -size.y * 0.08 : 0;
+    const usableWidthPx = Math.max(width * 0.45, width - 24);
+    const usableFractionX = Math.min(1, usableWidthPx / width);
+    const distHorizontal =
+      ((size.x * 1.15) / (2 * tanHalfFov * aspect)) / usableFractionX;
+
+    const defaultDistance = Math.max(
+      distVertical,
+      distHorizontal,
+      this.modelRadius * 1.45,
+    );
+
+    this.controls.minDistance = Math.max(0.12, this.modelRadius * 0.18);
+    this.controls.maxDistance = Math.max(
+      defaultDistance * 1.6,
+      this.modelRadius * 5.0,
+    );
+
+    const worldHeightAtDist = 2 * defaultDistance * tanHalfFov;
+    const verticalCenterShiftPx =
+      (this.framingBottomInset - this.framingTopInset) * 0.5;
+    const targetYOffset = -(verticalCenterShiftPx / height) * worldHeightAtDist;
+
     this.defaultCameraTarget.set(
       this.modelCenter.x,
       this.modelCenter.y + targetYOffset,
@@ -663,7 +745,7 @@ export class AnatomyEngine {
     );
     this.defaultCameraPosition.set(
       this.modelCenter.x,
-      this.defaultCameraTarget.y + size.y * 0.03,
+      this.defaultCameraTarget.y + size.y * 0.02,
       this.modelCenter.z + defaultDistance,
     );
 
@@ -806,6 +888,14 @@ export class AnatomyEngine {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
     this.labelProjector.setViewport(width, height);
+
+    if (this.hasReceivedSafeInsets) {
+      this.framingTopInset = this.safeInsets.top;
+      this.framingBottomInset = this.safeInsets.bottom;
+    }
+    if (this.hasFramedInitialModel) {
+      this.updateModelBoundsAndFraming(!this.userInteractedWithCamera);
+    }
   }
 
   private readonly handleStoreChange = (): void => {
@@ -846,6 +936,7 @@ export class AnatomyEngine {
   };
 
   private readonly handleControlsStart = (): void => {
+    this.userInteractedWithCamera = true;
     this.cancelCameraAnimation();
     this.interactionController?.notifyCameraStart();
   };
@@ -1010,7 +1101,7 @@ export class AnatomyEngine {
       const root = this.systemRoots[system];
       if (root) {
         this.scene?.remove(root);
-        disposeObjectHierarchy(root);
+        disposeObjectGeometries(root);
         this.systemRoots[system] = null;
       }
     }
@@ -1036,5 +1127,10 @@ export class AnatomyEngine {
     this.camera = null;
     this.container = null;
     this.hasFramedInitialModel = false;
+    this.userInteractedWithCamera = false;
+    this.hasReceivedSafeInsets = false;
+    this.safeInsets = { top: 64, right: 12, bottom: 132, left: 12 };
+    this.framingTopInset = 64;
+    this.framingBottomInset = 132;
   }
 }

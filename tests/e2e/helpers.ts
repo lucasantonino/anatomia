@@ -5,7 +5,7 @@ import { expect, type Page } from '@playwright/test';
 export const VISUAL_AUDIT_DIR = path.resolve(
   process.cwd(),
   'test-results',
-  'visual-audit',
+  'visual-audit-v2',
 );
 
 export interface RuntimeDiagnostics {
@@ -58,13 +58,13 @@ export async function waitForViewerFullyLoaded(page: Page): Promise<void> {
     timeout: 20_000,
   });
   await expect(page.getByTestId('status-initial-loading')).toHaveCount(0, {
-    timeout: 30_000,
+    timeout: 45_000,
   });
   await expect(page.getByTestId('status-muscular-loading')).toHaveCount(0, {
-    timeout: 30_000,
+    timeout: 45_000,
   });
   await expect(page.getByTestId('status-nonblocking')).toHaveCount(0, {
-    timeout: 30_000,
+    timeout: 45_000,
   });
   await waitAnimationFrames(page, 4);
 }

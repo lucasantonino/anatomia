@@ -118,6 +118,12 @@ export const AnatomyIdSchema = z
   );
 
 export const AnatomySystemSchema = z.enum(['muscular', 'skeletal']);
+export const AnatomyRegionSchema = z.enum([
+  'head_neck',
+  'trunk',
+  'upper_limb',
+  'lower_limb',
+]);
 export const LateralitySchema = z.enum(['left', 'right', 'midline']);
 export const ReviewStatusSchema = z.enum(['pending_review', 'approved']);
 
@@ -262,7 +268,7 @@ export const StructureMetadataSchema = z
     anatomyId: AnatomyIdSchema,
     system: AnatomySystemSchema,
     laterality: LateralitySchema,
-    region: NonEmptyStringSchema,
+    region: AnatomyRegionSchema,
     displayName: DisplayNameSchema,
     scientificName: NonEmptyStringSchema,
     meshNodes: z
@@ -334,6 +340,7 @@ export const CoverageStructureSchema = z
     anatomyId: AnatomyIdSchema,
     system: AnatomySystemSchema,
     laterality: LateralitySchema,
+    region: AnatomyRegionSchema.optional(),
     presentInAsset: z.boolean(),
     detailLevel: NonEmptyStringSchema,
     meshNodes: z
@@ -407,6 +414,7 @@ export function isPointWithinBoundingBox(
 
 // Tipos inferidos dos schemas Zod
 export type AnatomySystem = z.infer<typeof AnatomySystemSchema>;
+export type AnatomyRegion = z.infer<typeof AnatomyRegionSchema>;
 export type Laterality = z.infer<typeof LateralitySchema>;
 export type ReviewStatus = z.infer<typeof ReviewStatusSchema>;
 export type Vec3 = z.infer<typeof Vec3Schema>;
